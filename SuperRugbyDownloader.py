@@ -27,7 +27,11 @@ def downloader(year, connect):
     URLPage = 'https://en.wikipedia.org/wiki/'+str(year)+'_Super_12_season'     
     # Creates soup and dowloads data
     soup = BeautifulSoup(urllib2.urlopen(URLPage).read())
-    table = soup.find('table','wikitable sortable')
+    # The table layout is different depending on the year
+    if year<=2002:
+        table = soup.find('table','wikitable sortable')
+    elif year>=2003:
+        table = soup.find_all('table','wikitable')[1]
     # Iterates over row and column of the table
     for row in table('tr'):
         tempRow=[]
@@ -97,7 +101,7 @@ def addToDatabase(dataFrame, connect):
     conn.close()
 
 def downloadAll(connect):
-    years = range(2003,2004,1)
+    years = range(1996,2006,1)
     for year in years:
         print year
         downloader(year, connect)
@@ -106,13 +110,13 @@ host = "localhost"; user = "dlmsql"; passwd = "DLMPa$$word"; db = "superRugbyPre
 connect = [host, user, passwd, db]
 
 #Set to True to remove the table
-if 1:
+if 0:
     removeTable('seasonResults', connect)
 #Set to True to create the table
-if 1:
+if 0:
     createTable('seasonResults', connect)
 #Set to true to download data                                                 
-if 1:                                                                
+if 0:                                                                
     #downloader(1996, connect)
     downloadAll(connect)
 
