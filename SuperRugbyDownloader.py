@@ -6,11 +6,12 @@ Created: 04/05/2016
 Modified: 09/05/2016
     Downloads data from all years. Had to add many exception because different
     years have the data formatted slightly differently
-
-TO DO:
-    Clean team name data
+Modified: 10/05/2016
+    Implemented function to clean the TeamName data as different years data had
+    slightly different team names. And several of the south african teams have
+    changed their name over the years.
 '''
-import numpy as np
+
 import pandas as pd
 from bs4 import BeautifulSoup
 import urllib2
@@ -54,7 +55,6 @@ def downloader(year, connect):
             for row in tab('tr'):
                 tempRow=[]      
                 # Don't read in title row for years later than 2011
-                #if (rowCount in (range(0,5) + range(6,26,2) + range(25,30) + range(31,47,2))):
                 if (rowCount in range(0,2)):
                     pass
                 else:
@@ -139,11 +139,44 @@ def downloader(year, connect):
     # Append a year column
     yearCol=[]
     [yearCol.append(year) for n in xrange(len(rugbyData))]
-    rugbyData["Year"] = yearCol  
+    rugbyData["Year"] = yearCol
+    # Clean the TeamName column
+    rugbyData = cleanNameData(rugbyData)  
     # Add to SQL database
     addToDatabase(rugbyData, connect)
-    #print rugbyData
 
+
+# cleanNameData(datFrame)
+def cleanNameData(datFrame):
+    # Create a dictionary that includes all the possible names for different teams
+    hig = "Otago Highlanders"
+    cru = "Canterbury Crusaders"
+    chi = "Waikato Chiefs"
+    hur = "Wellington Hurricanes"
+    blu = "Auckland Blues"   
+    red = "Queensland Reds"
+    bru = "ACT Brumbies"
+    war = "NSW Waratahs"
+    forc = "Western Force"
+    sha = "Natal Sharks"
+    bul = ["Bulls","'Bulls", "Northern Bulls", "Northern Transvaal"]
+    lio = ["Lions", "Cats", "Gauteng Lions", "Transvaal"]
+    sto = ["Western Province", "Stormers"]
+    che = ["Cheetahs", "Free State"]
+    ## Kings, Rebels, Jaguares and Sunwolves do not need to be cleaned
+    
+    nameDict = {"Highlanders": hig, "Crusaders": cru, "Chiefs": chi, "Hurricanes": hur, "Blues": blu, "Reds": red, "Brumbies": bru, "Waratahs": war, "Force": forc,
+                "Sharks": sha, "Bulls": bul, "Lions": lio, "Stormers": sto, "Cheetahs": che}
+    
+    # For each TeamName in the input dataframe, loop over the dictionary items, if TeamName is in the dictionary, use the corresponding dictionary
+    # key as the new TeamName. Else the TeamName is unchanged.
+    for i in xrange(len(datFrame.TeamName)):
+        for item in nameDict.items():
+            if datFrame["TeamName"][i] in item[1]:
+                datFrame["TeamName"][i] = item[0]
+    # Return the input data frame, with TeamNames now cleaned.
+    return datFrame
+  
 
 #createTable()
 def createTable(tableName, connect):
@@ -193,14 +226,14 @@ host = "localhost"; user = "dlmsql"; passwd = "DLMPa$$word"; db = "superRugbyPre
 connect = [host, user, passwd, db]
 
 #Set to True to remove the table
-if 0:
+tf = 0
+if tf:
     removeTable('seasonResults', connect)
 #Set to True to create the table
-if 0:
+if tf:
     createTable('seasonResults', connect)
 #Set to true to download data                                                 
-if 0:                                                                
-    #downloader(1996, connect)
+if tf:                                                                
     downloadAll(connect)
 
 
@@ -208,8 +241,10 @@ if 0:
 
 # Temporary code to read from database
 conn = pymysql.connect(connect[0], connect[1], connect[2], connect[3])
-sqlQuery = '''SELECT * FROM seasonResults'''
-#sqlQuery = '''SELECT * FROM seasonResults WHERE Year = 1996'''                    
+sqlQuery = '''SELECT * FROM seasonResults'''    #283 rows total
+#sqlQuery = '''SELECT * FROM seasonResults WHERE Year = 1996''' 
+#sqlQuery = '''SELECT * FROM seasonResults WHERE TeamName LIKE '%kin%' OR TeamName LIKE '%souk%' '''
+#sqlQuery = '''SELECT DISTINCT TeamName FROM seasonResults'''       #18 rows total                
 dataFrame = pd.read_sql(sqlQuery, conn)
 conn.close()
 dataFrame 
