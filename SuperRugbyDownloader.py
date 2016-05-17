@@ -17,6 +17,8 @@ Modified: 10/05/2016
 Modified: 17/05/2016
     Implemented updateData() function, which enables the table data to be updated
     for a particular year without redownloading the entire database.
+    Implemented normalizeData() function, which normalizes the yearly data by the
+    number of games played.
 '''
 
 import pandas as pd
@@ -238,7 +240,7 @@ def downloadAll(connect):
         print year
         downloader(year, connect)
         
-# Update Data(year)
+# updateData(year)
 def updateData(year, connect):
     # removes data for year, and redownloads it. Useful for updating DB after a game
     # without having to redownload entire database.
@@ -254,6 +256,16 @@ def updateData(year, connect):
     downloader(year, connect)
     print "{} data updated".format(year)
     
+# normalizeData()
+def normalizeData(connect):
+    # normalizes the data in seasonResults to the number of
+    # games played and returns the new dataframe.
+    sqlQuery = '''SELECT * FROM seasonResults'''
+    dataFrame = readDatabase(connect, sqlQuery)
+    for colName in ["BonusPoints", "Draw", "Lost", "Points", "PointsAgainst", "PointsDifferential","PointsFor","Won"]:
+        dataFrame[colName] = dataFrame[colName]/dataFrame["GamesPlayed"]
+    return dataFrame
+           
 
 host = "localhost"; user = "dlmsql"; passwd = "DLMPa$$word"; db = "superRugbyPredictor"
 connect = [host, user, passwd, db]
@@ -272,11 +284,13 @@ if tf:
 if 0:
     updateData(2016, connect)
 
+dF = normalizeData(connect)
+dF
 
-# Temporary code to read from database
-sqlQuery = '''SELECT * FROM seasonResults'''    #283 rows total
-#sqlQuery = '''SELECT * FROM seasonResults WHERE Year = 1996''' 
-#sqlQuery = '''SELECT * FROM seasonResults WHERE TeamName LIKE '%kin%' OR TeamName LIKE '%souk%' '''
-#sqlQuery = '''SELECT DISTINCT TeamName FROM seasonResults'''       #18 rows total                
-dataFrame = readDatabase(connect, sqlQuery)
-dataFrame 
+## Temporary code to read from database
+#sqlQuery = '''SELECT * FROM seasonResults'''    #283 rows total
+##sqlQuery = '''SELECT * FROM seasonResults WHERE Year = 1996''' 
+##sqlQuery = '''SELECT * FROM seasonResults WHERE TeamName LIKE '%kin%' OR TeamName LIKE '%souk%' '''
+##sqlQuery = '''SELECT DISTINCT TeamName FROM seasonResults'''       #18 rows total                
+#dataFrame = readDatabase(connect, sqlQuery)
+#dataFrame 
