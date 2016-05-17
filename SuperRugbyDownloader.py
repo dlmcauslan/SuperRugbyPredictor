@@ -1,15 +1,22 @@
 '''                   SuperRugbyDownloader.py
 Downloads historical super rugby results from wikipedia.
+
 Created: 04/05/2016
     Implemented downloading of 1996 data
     Saves data in MySQL database
+
 Modified: 09/05/2016
     Downloads data from all years. Had to add many exception because different
     years have the data formatted slightly differently
+
 Modified: 10/05/2016
     Implemented function to clean the TeamName data as different years data had
     slightly different team names. And several of the south african teams have
     changed their name over the years.
+
+Modified: 17/05/2016
+    Implemented updateData() function, which enables the table data to be updated
+    for a particular year without redownloading the entire database.
 '''
 
 import pandas as pd
@@ -215,12 +222,38 @@ def addToDatabase(dataFrame, connect):
     dataFrame.to_sql(name = 'seasonResults', con = conn, flavor ='mysql', if_exists = 'append', index=False)       
     conn.commit()
     conn.close()
+    
+# readDatabase(connect, sqlQuery)
+def readDatabase(connect, sqlQuery):
+    # Uses the query sqlQuery to read the database specified in connect
+    conn = pymysql.connect(connect[0], connect[1], connect[2], connect[3])               
+    dataFrame = pd.read_sql(sqlQuery, conn)
+    conn.close()
+    return dataFrame 
 
+# Downloads all the data
 def downloadAll(connect):
     years = range(1996,2017,1)
     for year in years:
         print year
         downloader(year, connect)
+        
+# Update Data(year)
+def updateData(year, connect):
+    # removes data for year, and redownloads it. Useful for updating DB after a game
+    # without having to redownload entire database.
+    # Remove all current data for that year
+    conn = pymysql.connect(connect[0], connect[1], connect[2], connect[3])
+    cursor = conn.cursor()        
+    #Remove database
+    sql_command = """ DELETE FROM seasonResults WHERE Year = {} """.format(year)
+    cursor.execute(sql_command)
+    conn.commit()
+    conn.close()
+    # Redownload data for that year
+    downloader(year, connect)
+    print "{} data updated".format(year)
+    
 
 host = "localhost"; user = "dlmsql"; passwd = "DLMPa$$word"; db = "superRugbyPredictor"
 connect = [host, user, passwd, db]
@@ -235,16 +268,15 @@ if tf:
 #Set to true to download data                                                 
 if tf:                                                                
     downloadAll(connect)
-
-
+# Set to True to update a particular years data
+if 0:
+    updateData(2016, connect)
 
 
 # Temporary code to read from database
-conn = pymysql.connect(connect[0], connect[1], connect[2], connect[3])
 sqlQuery = '''SELECT * FROM seasonResults'''    #283 rows total
 #sqlQuery = '''SELECT * FROM seasonResults WHERE Year = 1996''' 
 #sqlQuery = '''SELECT * FROM seasonResults WHERE TeamName LIKE '%kin%' OR TeamName LIKE '%souk%' '''
 #sqlQuery = '''SELECT DISTINCT TeamName FROM seasonResults'''       #18 rows total                
-dataFrame = pd.read_sql(sqlQuery, conn)
-conn.close()
+dataFrame = readDatabase(connect, sqlQuery)
 dataFrame 
