@@ -29,6 +29,10 @@ Modified: 18/05/2016
     has been in place.
     * Implemented downloader2() for downloading individual game results for 1996 - so far.
     
+Modified: 19/05/2016
+    * Now downloads number of try penalty and conversion match data, which is then cleaned
+    using tryPenConData(). - works for 1996 so far.
+    
     
 TO DO: Download individual game results, such as tries scored, game score etc. 
 '''
@@ -176,7 +180,7 @@ def downloader(year, connect):
 # Downloads individual match data
 def downloader2(year, connect):
     #Creates dataframe
-    colNames =["HomeTeam", "HomeScore", "AwayScore", "AwayTeam", "Week", "Year"]
+    colNames =["HomeTeam", "HomeScore", "AwayScore", "AwayTeam", "HTries", "HCons", "HPens", "HCheck", "ATries", "ACons", "APens", "ACheck", "Week", "Year"]
     rugbyData = pd.DataFrame(dict.fromkeys(colNames,[]))
     
     # Gets different URLs because the competition changed its name over the years.
@@ -200,6 +204,7 @@ def downloader2(year, connect):
     # otherwise loop over the row adding data to the data frame. Exit out of the
     # loop when it reaches the row labelled Finals[edit]
     while row.find_next_sibling().get_text() != "Finals[edit]":
+    #while row.find_next_sibling().get_text() != "Week 10[edit]":
         x2=row
         row = x2.find_next_sibling()
         # If we've reached a week label, get the week number
@@ -210,7 +215,7 @@ def downloader2(year, connect):
             n=0
             tempRow=[]
             # Loop over each column in the row.
-            for col in row.tr.findAll("td"):                
+            for col in row.findAll("td"):                
                 txt = col.get_text()
                 # Columns 2 and 4 are the home and away team names
                 if n in [2,4]:
@@ -225,6 +230,13 @@ def downloader2(year, connect):
                     [hScore, aScore] = re.findall(u'\d{1,3}',txt)
                     tempRow.append(int(hScore))
                     tempRow.append(int(aScore))
+                # Column 8 is the home team tries, penalty, conversion data. Column 10 is the away team data.
+                if n in [8,10]:
+                    nTry, nCon, nPen = tryPenConData(txt)
+                    tempRow.append(nTry)
+                    tempRow.append(nCon)
+                    tempRow.append(nPen)
+                    tempRow.append(5*nTry+2*nCon+3*nPen) 
                 # Increment the column number by 1.
                 n+=1
             # Add on the week
@@ -235,15 +247,8 @@ def downloader2(year, connect):
             if tempRow != []:
                 rugbyData = rugbyData.append(pd.DataFrame([tempRow], columns=colNames), ignore_index=True)
        
-    return rugbyData
-    
-dF = downloader2(1996,connect)
-print dF
-
-        
-
-    
-    
+    return rugbyData   
+   
 # cleanNameData(datFrame)
 def cleanNameData(datFrame):
     # Create a dictionary that includes all the possible names for different teams
@@ -274,6 +279,45 @@ def cleanNameData(datFrame):
                 datFrame["TeamName"][i] = item[0]
     # Return the input data frame, with TeamNames now cleaned.
     return datFrame
+
+# tryPenConData()    
+def tryPenConData(datString):
+    # Takes in a datString which contains, penalty, try and conversion data for individual matches,
+    # splits the string up and calculates the number of T, P and C. Returns nTries, nCons, nPens.
+    strVect = re.split("[:,\n]",datString)
+    nTries = 0
+    nCons = 0
+    nPens = 0
+    flag = 'N'
+    # Iterates over the split string in strVect summing up the number of tries, penalties and conversions
+    # scored
+    for n in strVect:
+        if n == "Try":
+            flag = 'T'
+        elif n == "Con":
+            flag = 'C'
+        elif n == "Pen":
+            flag = 'P'
+        elif n == "Drop":
+            flag = 'N'
+        elif n =='':
+            pass
+        elif re.match('\([1-9]',re.split(' ',n)[-1]):    # Adds on number of tries etc
+            num = int(re.findall('[1-9]',re.split(' ',n)[-1])[0])    
+            if flag == 'T':
+                nTries += num 
+            elif flag == 'P':
+                nPens += num
+            elif flag == 'C':
+                nCons += num 
+        else:
+            if flag == 'T':
+                nTries += 1
+            elif flag == 'P':
+                nPens += 1
+            elif flag == 'C':
+                nCons += 1    
+    return nTries, nCons, nPens
   
 
 #createTable()
@@ -440,7 +484,8 @@ if tf2:
     createPastData(connect)
 
         
-
+dF = downloader2(1996,connect)
+print dF
 
 
 ## Temporary code for testing
