@@ -27,6 +27,7 @@ Modified: 17/05/2016
 Modified: 18/05/2016
     * Implemented reSort() to fix the team rankings for years where the conference system
     has been in place.
+    * Implemented downloader2() for downloading individual game results for 1996 - so far.
     
     
 TO DO: Download individual game results, such as tries scored, game score etc. 
@@ -43,6 +44,10 @@ import pymysql
 # Makes dataframes display better on my surface.
 pd.set_option('display.width', 190)
 pd.options.display.max_columns = 50
+
+# SQL Connection
+host = "localhost"; user = "dlmsql"; passwd = "DLMPa$$word"; db = "superRugbyPredictor"
+connect = [host, user, passwd, db]
 
 def downloader(year, connect):
     #Creates dataframe
@@ -168,7 +173,77 @@ def downloader(year, connect):
     # Add to SQL database
     addToDatabase(rugbyData, 'seasonResults', connect)
 
+# Downloads individual match data
+def downloader2(year, connect):
+    #Creates dataframe
+    colNames =["HomeTeam", "HomeScore", "AwayScore", "AwayTeam", "Week", "Year"]
+    rugbyData = pd.DataFrame(dict.fromkeys(colNames,[]))
+    
+    # Gets different URLs because the competition changed its name over the years.
+    if year <= 2005:
+        URLPage = 'https://en.wikipedia.org/wiki/{}_Super_12_season'.format(year)
+    elif year >= 2006 and year<=2010:
+        URLPage = 'https://en.wikipedia.org/wiki/{}_Super_14_season'.format(year)
+    elif year >= 2011:
+        URLPage = 'https://en.wikipedia.org/wiki/{}_Super_Rugby_season'.format(year)
+    # Creates soup and dowloads data
+    soup = BeautifulSoup(urllib2.urlopen(URLPage).read(),"lxml")
+    # The table layout is different depending on the year
+    if year<=2002:
+        alldat = soup.find(id = "mw-content-text")
+    
+    # Find the row for week 1
+    row = alldat.find("h3")   
+    week = 1
+    
+    # Iterate over the soup and if it is a week label, get the week number
+    # otherwise loop over the row adding data to the data frame. Exit out of the
+    # loop when it reaches the row labelled Finals[edit]
+    while row.find_next_sibling().get_text() != "Finals[edit]":
+        x2=row
+        row = x2.find_next_sibling()
+        # If we've reached a week label, get the week number
+        if re.match('Week',row.get_text()):
+            week = int(re.findall(u'\d{1,3}',row.get_text())[0])
+        # Otherwise loop over the row, putting the data into the data frame.
+        else:
+            n=0
+            tempRow=[]
+            # Loop over each column in the row.
+            for col in row.tr.findAll("td"):                
+                txt = col.get_text()
+                # Columns 2 and 4 are the home and away team names
+                if n in [2,4]:
+                    # Needed to add this if statement because there is 2 transvaal teams in 1996
+                    if str.split(str(txt))[0] == 'Northern':
+                        tempRow.append('Bulls')
+                    else:
+                        tempRow.append(str.split(str(txt))[-1])
+                # Column 3 is the score. Split this up into the home and away scores and add as
+                #separate columns to the data frame.
+                if n == 3:
+                    [hScore, aScore] = re.findall(u'\d{1,3}',txt)
+                    tempRow.append(int(hScore))
+                    tempRow.append(int(aScore))
+                # Increment the column number by 1.
+                n+=1
+            # Add on the week
+            tempRow.append(week)
+            # Add on the year
+            tempRow.append(year)
+            # Add row to data frame (not including playoffs
+            if tempRow != []:
+                rugbyData = rugbyData.append(pd.DataFrame([tempRow], columns=colNames), ignore_index=True)
+       
+    return rugbyData
+    
+dF = downloader2(1996,connect)
+print dF
 
+        
+
+    
+    
 # cleanNameData(datFrame)
 def cleanNameData(datFrame):
     # Create a dictionary that includes all the possible names for different teams
@@ -329,8 +404,7 @@ def reSort(dataFrame, yearVect):
     return dataFrame
     
 
-host = "localhost"; user = "dlmsql"; passwd = "DLMPa$$word"; db = "superRugbyPredictor"
-connect = [host, user, passwd, db]
+
 
 #Set to True to remove the table
 tf = 0
@@ -375,6 +449,6 @@ sqlQuery = '''SELECT * FROM seasonResultsPastResults'''    #283 rows total
 ##sqlQuery = '''SELECT * FROM seasonResults WHERE TeamName LIKE '%kin%' OR TeamName LIKE '%souk%' '''
 ##sqlQuery = '''SELECT DISTINCT TeamName FROM seasonResults'''       #18 rows total                
 dataFrame = readDatabase(connect, sqlQuery)
-print dataFrame
+#print dataFrame
 #dF = reSort(dataFrame, range(2012,2017))
 #print dF.loc[dF["Year"]==2012,["TeamName", "Position","Points","Won", "PDiff"]]
