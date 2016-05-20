@@ -32,6 +32,7 @@ Modified: 18/05/2016
 Modified: 19/05/2016
     * Now downloads number of try penalty and conversion match data, which is then cleaned
     using tryPenConData(). - works for 1996 so far.
+    * Downloading match data works up to and including 2011.
     
     
 TO DO: Download individual game results, such as tries scored, game score etc. 
@@ -180,7 +181,7 @@ def downloader(year, connect):
 # Downloads individual match data
 def downloader2(year, connect):
     #Creates dataframe
-    colNames =["HomeTeam", "HomeScore", "AwayScore", "AwayTeam", "HTries", "HCons", "HPens", "HCheck", "ATries", "ACons", "APens", "ACheck", "Week", "Year"]
+    colNames =["HomeTeam", "HomeScore", "AwayScore", "AwayTeam", "HTries", "HCons", "HPens", "HoCheck", "ATries", "ACons", "APens", "AwCheck", "Week", "Year"]
     rugbyData = pd.DataFrame(dict.fromkeys(colNames,[]))
     
     # Gets different URLs because the competition changed its name over the years.
@@ -193,22 +194,31 @@ def downloader2(year, connect):
     # Creates soup and dowloads data
     soup = BeautifulSoup(urllib2.urlopen(URLPage).read(),"lxml")
     # The table layout is different depending on the year
-    if year<=2002:
+    if year<=2016:
         alldat = soup.find(id = "mw-content-text")
     
-    # Find the row for week 1
-    row = alldat.find("h3")   
-    week = 1
     
+    # Find the row for week 1
+    row = alldat.find("h3")
+    # For 2006 there are other headings above Round 1 so need to skip over them
+    if year==2006:  
+        for i in xrange(5):    
+            row = row.find_next_sibling()               
+    week = 1
+
     # Iterate over the soup and if it is a week label, get the week number
     # otherwise loop over the row adding data to the data frame. Exit out of the
     # loop when it reaches the row labelled Finals[edit]
-    while row.find_next_sibling().get_text() != "Finals[edit]":
+    while row.find_next_sibling().get_text() not in ["Finals[edit]", "Playoffs[edit]"]:
     #while row.find_next_sibling().get_text() != "Week 10[edit]":
-        x2=row
-        row = x2.find_next_sibling()
+        # Skip to next row of the soup
+        row = row.find_next_sibling()
+        # If text or data we're not interested in, skip over it.
+        if re.match('<p|<ul',str(row)) or re.findall(u'Bye',row.get_text()):
+            #row = row.find_next_sibling()
+            pass
         # If we've reached a week label, get the week number
-        if re.match('Week',row.get_text()):
+        elif re.match('Week|Round',row.get_text()):
             week = int(re.findall(u'\d{1,3}',row.get_text())[0])
         # Otherwise loop over the row, putting the data into the data frame.
         else:
@@ -227,16 +237,28 @@ def downloader2(year, connect):
                 # Column 3 is the score. Split this up into the home and away scores and add as
                 #separate columns to the data frame.
                 if n == 3:
-                    [hScore, aScore] = re.findall(u'\d{1,3}',txt)
-                    tempRow.append(int(hScore))
-                    tempRow.append(int(aScore))
+                    #print re.findall(u'\d{1,3}',txt)
+                    if re.findall(u'\d{1,3}',txt) !=[]:        # Because a game in 2011 was cancelled due to ChCh earthquake
+                        [hScore, aScore] = re.findall(u'\d{1,3}',txt)
+                        tempRow.append(int(hScore))
+                        tempRow.append(int(aScore))
+                    else:
+                        tempRow.append(np.nan)
+                        tempRow.append(np.nan)
                 # Column 8 is the home team tries, penalty, conversion data. Column 10 is the away team data.
                 if n in [8,10]:
-                    nTry, nCon, nPen = tryPenConData(txt)
+                    if txt:     # Make sure the data exists
+                        nTry, nCon, nPen = tryPenConData(txt)
+                        #print txt
+                        #print '{} Cons, {} Pens, {} Tries'.format(nCon, nPen, nTry)
+                        #print ' '
+                    else:
+                        nTry, nCon, nPen = np.nan, np.nan, np.nan                   
                     tempRow.append(nTry)
                     tempRow.append(nCon)
                     tempRow.append(nPen)
-                    tempRow.append(5*nTry+2*nCon+3*nPen) 
+                    tempRow.append(5*nTry+2*nCon+3*nPen)
+                     
                 # Increment the column number by 1.
                 n+=1
             # Add on the week
@@ -284,7 +306,7 @@ def cleanNameData(datFrame):
 def tryPenConData(datString):
     # Takes in a datString which contains, penalty, try and conversion data for individual matches,
     # splits the string up and calculates the number of T, P and C. Returns nTries, nCons, nPens.
-    strVect = re.split("[:,\n]",datString)
+    strVect = re.split("[):,\n]",datString)
     nTries = 0
     nCons = 0
     nPens = 0
@@ -292,18 +314,18 @@ def tryPenConData(datString):
     # Iterates over the split string in strVect summing up the number of tries, penalties and conversions
     # scored
     for n in strVect:
-        if n == "Try":
+        if n in ["Try", "Tries"]:
             flag = 'T'
-        elif n == "Con":
+        elif n in ["Con", "Cons", "Cons."]:
             flag = 'C'
-        elif n == "Pen":
+        elif n in ["Pen", "Pens", "Pens."]:
             flag = 'P'
-        elif n == "Drop":
+        elif n in ["Drop", "Cards"]:
             flag = 'N'
         elif n =='':
             pass
-        elif re.match('\([1-9]',re.split(' ',n)[-1]):    # Adds on number of tries etc
-            num = int(re.findall('[1-9]',re.split(' ',n)[-1])[0])    
+        elif re.match('\([1-9]{1,2}',re.split(' ',n)[-1]):    # Adds on number of tries etc
+            num = int(re.findall('[1-9]{1,2}',re.split(' ',n)[-1])[0])    
             if flag == 'T':
                 nTries += num 
             elif flag == 'P':
@@ -484,7 +506,7 @@ if tf2:
     createPastData(connect)
 
         
-dF = downloader2(1996,connect)
+dF = downloader2(2011,connect)
 print dF
 
 
