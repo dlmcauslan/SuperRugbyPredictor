@@ -34,8 +34,15 @@ Modified: 19/05/2016
     using tryPenConData(). - works for 1996 so far.
     * Downloading match data works up to and including 2011.
     
+Modified: 24/09/2016
+    * Created simpleDownloader2 function which downloads individual match results, but only 
+    final scores, not tries etc.
+    * This simple downloader function works up to and including 2016.
     
-TO DO: Download individual game results, such as tries scored, game score etc. 
+    
+TO DO: Download individual game results, such as tries scored, penalties, conversions etc.
+       Make SQL table of individual game results
+        
 '''
 
 import pandas as pd
@@ -52,6 +59,7 @@ pd.options.display.max_columns = 50
 
 # SQL Connection
 host = "localhost"; user = "dlmsql"; passwd = "DLMPa$$word"; db = "superRugbyPredictor"
+host = "localhost"; user = "root"; passwd = "DLMPa$$word"; db = "superRugbyPredictor"
 connect = [host, user, passwd, db]
 
 def downloader(year, connect):
@@ -203,7 +211,12 @@ def downloader2(year, connect):
     # For 2006 there are other headings above Round 1 so need to skip over them
     if year==2006:  
         for i in xrange(5):    
-            row = row.find_next_sibling()               
+            row = row.find_next_sibling()
+    if year == 2012:
+        row = alldat.find(id = "Round_1").find_parent("h3")
+        #print row
+        #row = row.find_parent("h3")
+        #print row               
     week = 1
 
     # Iterate over the soup and if it is a week label, get the week number
@@ -212,7 +225,7 @@ def downloader2(year, connect):
     while row.find_next_sibling().get_text() not in ["Finals[edit]", "Playoffs[edit]"]:
     #while row.find_next_sibling().get_text() != "Week 10[edit]":
         # Skip to next row of the soup
-        row = row.find_next_sibling()
+        row = row.find_next_sibling()       
         # If text or data we're not interested in, skip over it.
         if re.match('<p|<ul',str(row)) or re.findall(u'Bye',row.get_text()):
             #row = row.find_next_sibling()
@@ -248,28 +261,116 @@ def downloader2(year, connect):
                 # Column 8 is the home team tries, penalty, conversion data. Column 10 is the away team data.
                 if n in [8,10]:
                     if txt:     # Make sure the data exists
-                        nTry, nCon, nPen = tryPenConData(txt)
-                        #print txt
-                        #print '{} Cons, {} Pens, {} Tries'.format(nCon, nPen, nTry)
-                        #print ' '
+                        nTry, nCon, nPen = tryPenConData(txt, year)
+                        print txt
+                        print '{} Cons, {} Pens, {} Tries'.format(nCon, nPen, nTry)
+                        print ' '
+                    elif (tempRow[1]==0) | (tempRow[2]==0):      # The case when a team scores 0.
+                        nTry, nCon, nPen = 0, 0, 0
                     else:
                         nTry, nCon, nPen = np.nan, np.nan, np.nan                   
-                    tempRow.append(nTry)
-                    tempRow.append(nCon)
-                    tempRow.append(nPen)
-                    tempRow.append(5*nTry+2*nCon+3*nPen)
+                    tempRow.append(int(nTry))
+                    tempRow.append(int(nCon))
+                    tempRow.append(int(nPen))
+                    tempRow.append(int(5*nTry+2*nCon+3*nPen))
                      
                 # Increment the column number by 1.
                 n+=1
             # Add on the week
-            tempRow.append(week)
+            tempRow.append(int(week))
             # Add on the year
-            tempRow.append(year)
-            # Add row to data frame (not including playoffs
+            tempRow.append(int(year))
+            # Add row to data frame (not including playoffs)
             if tempRow != []:
                 rugbyData = rugbyData.append(pd.DataFrame([tempRow], columns=colNames), ignore_index=True)
        
-    return rugbyData   
+    return rugbyData 
+    
+# Downloads individual match data (teams and score
+def simpleDownloader2(year, connect):
+    #Creates dataframe
+    #colNames =["HomeTeam", "HomeScore", "AwayScore", "AwayTeam", "HTries", "HCons", "HPens", "HoCheck", "ATries", "ACons", "APens", "AwCheck", "Week", "Year"]
+    colNames =["HomeTeam", "HomeScore", "AwayScore", "AwayTeam", "Week", "Year"]
+    rugbyData = pd.DataFrame(dict.fromkeys(colNames,[]))
+    
+    # Gets different URLs because the competition changed its name over the years.
+    if year <= 2005:
+        URLPage = 'https://en.wikipedia.org/wiki/{}_Super_12_season'.format(year)
+    elif year >= 2006 and year<=2010:
+        URLPage = 'https://en.wikipedia.org/wiki/{}_Super_14_season'.format(year)
+    elif year >= 2011:
+        URLPage = 'https://en.wikipedia.org/wiki/{}_Super_Rugby_season'.format(year)
+    # Creates soup and dowloads data
+    soup = BeautifulSoup(urllib2.urlopen(URLPage).read(),"lxml")
+    # The table layout is different depending on the year
+    if year<=2016:
+        alldat = soup.find(id = "mw-content-text")
+    
+    
+    # Find the row for week 1
+    row = alldat.find("h3")
+    # For 2006 there are other headings above Round 1 so need to skip over them
+    if year==2006:  
+        for i in xrange(5):    
+            row = row.find_next_sibling()
+    if year >= 2012:
+        row = alldat.find(id = "Round_1").find_parent("h3")
+        #print row
+        #row = row.find_parent("h3")
+        #print row               
+    week = 1
+
+    # Iterate over the soup and if it is a week label, get the week number
+    # otherwise loop over the row adding data to the data frame. Exit out of the
+    # loop when it reaches the row labelled Finals[edit]
+    while row.find_next_sibling().get_text() not in ["Finals[edit]", "Playoffs[edit]"]:
+    #while row.find_next_sibling().get_text() != "Week 10[edit]":
+        # Skip to next row of the soup
+        row = row.find_next_sibling()       
+        # If text or data we're not interested in, skip over it.
+        if re.match('<p|<ul',str(row)) or re.findall(u'Bye',row.get_text()):
+            #row = row.find_next_sibling()
+            pass
+        # If we've reached a week label, get the week number
+        elif re.match('Week|Round',row.get_text()):
+            week = int(re.findall(u'\d{1,3}',row.get_text())[0])
+        # Otherwise loop over the row, putting the data into the data frame.
+        else:
+            n=0
+            tempRow=[]
+            # Loop over each column in the row.
+            for col in row.findAll("td"):                
+                txt = col.get_text()
+                # Columns 2 and 4 are the home and away team names
+                if n in [2,4]:
+                    # Needed to add this if statement because there is 2 transvaal teams in 1996
+                    if str.split(str(txt))[0] == 'Northern':
+                        tempRow.append('Bulls')
+                    else:
+                        tempRow.append(str.split(str(txt))[-1])
+                # Column 3 is the score. Split this up into the home and away scores and add as
+                #separate columns to the data frame.
+                if n == 3:
+                    #print re.findall(u'\d{1,3}',txt)
+                    if re.findall(u'\d{1,3}',txt) !=[]:        # Because a game in 2011 was cancelled due to ChCh earthquake
+                        [hScore, aScore] = re.findall(u'\d{1,3}',txt)
+                        tempRow.append(int(hScore))
+                        tempRow.append(int(aScore))
+                    else:
+                        tempRow.append(np.nan)
+                        tempRow.append(np.nan)
+                     
+                # Increment the column number by 1.
+                n+=1
+            # Add on the week
+            tempRow.append(int(week))
+            # Add on the year
+            tempRow.append(int(year))
+            # Add row to data frame (not including playoffs)
+            if tempRow != []:
+                rugbyData = rugbyData.append(pd.DataFrame([tempRow], columns=colNames), ignore_index=True)
+       
+    return rugbyData  
    
 # cleanNameData(datFrame)
 def cleanNameData(datFrame):
@@ -303,7 +404,7 @@ def cleanNameData(datFrame):
     return datFrame
 
 # tryPenConData()    
-def tryPenConData(datString):
+def tryPenConData(datString, year):
     # Takes in a datString which contains, penalty, try and conversion data for individual matches,
     # splits the string up and calculates the number of T, P and C. Returns nTries, nCons, nPens.
     strVect = re.split("[):,\n]",datString)
@@ -324,15 +425,18 @@ def tryPenConData(datString):
             flag = 'N'
         elif n =='':
             pass
-        elif re.match('\([1-9]{1,2}',re.split(' ',n)[-1]):    # Adds on number of tries etc
-            num = int(re.findall('[1-9]{1,2}',re.split(' ',n)[-1])[0])    
+        elif re.match('\([0-9]{1,2}',re.split(' ',n)[-1]):    # Adds on number of tries etc
+            num = int(re.findall('[0-9]{1,2}',re.split(' ',n)[-1])[0])
+            if (year >= 2012) & (num!=0):
+                num-=1     
             if flag == 'T':
                 nTries += num 
             elif flag == 'P':
                 nPens += num
             elif flag == 'C':
                 nCons += num 
-        else:
+        ######## THIS DOESNT WORK YET ####################
+        elif not re.match(" [1-9]{1,2}'",n):   # From 2012 onwards the time the try was scored is added to the data, this stops it being counted:
             if flag == 'T':
                 nTries += 1
             elif flag == 'P':
@@ -506,15 +610,16 @@ if tf2:
     createPastData(connect)
 
         
-dF = downloader2(2011,connect)
+#dF = downloader2(2013,connect)
+dF = simpleDownloader2(2016,connect)
 print dF
 
 
 ## Temporary code for testing
-sqlQuery = '''SELECT * FROM seasonResultsPastResults'''    #283 rows total
-#sqlQuery = '''SELECT * FROM seasonResults WHERE Year >= 2012''' 
+#sqlQuery = '''SELECT * FROM seasonResultsPastResults'''    #283 rows total
+sqlQuery = '''SELECT TeamName, Position, Won, Points FROM seasonResultsPastResults WHERE Year >= 2015 ORDER BY Year, Position''' 
 ##sqlQuery = '''SELECT * FROM seasonResults WHERE TeamName LIKE '%kin%' OR TeamName LIKE '%souk%' '''
-##sqlQuery = '''SELECT DISTINCT TeamName FROM seasonResults'''       #18 rows total                
+#sqlQuery = '''SELECT DISTINCT TeamName FROM seasonResults'''       #18 rows total                
 dataFrame = readDatabase(connect, sqlQuery)
 #print dataFrame
 #dF = reSort(dataFrame, range(2012,2017))
