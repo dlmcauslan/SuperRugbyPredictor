@@ -12,9 +12,7 @@ Modified 24/09/2016:
 
 import pandas as pd
 import numpy as np
-import re
-import pymysql.cursors
-import pymysql
+import databaseFunctions as DB
 
 # Makes dataframes display better on my PC.
 pd.set_option('display.width', 190)
@@ -25,54 +23,7 @@ pd.options.display.max_columns = 50
 host = "localhost"; user = "root"; passwd = "DLMPa$$word"; db = "superRugbyPredictor"               # Desktop
 connect = [host, user, passwd, db]
 
-
-#createTable()
-def createTable(tableName, rowList, connect):
-    # function which creates the table (tableName) in the database db
-    conn = pymysql.connect(connect[0], connect[1], connect[2], connect[3])
-    cursor = conn.cursor()        
-    #Created database
-    sql_command = """ CREATE TABLE {} ({}) """.format(tableName, rowList)
-    print sql_command    
-    cursor.execute(sql_command)
-    conn.commit()
-    conn.close()
-    print "Database created" 
-
-        
-#removeTable()
-def removeTable(tableName, connect):
-    # function which removes the table (tableName) from the database db
-    conn = pymysql.connect(connect[0], connect[1], connect[2], connect[3])
-    cursor = conn.cursor()        
-    #Remove database
-    sql_command = """ DROP TABLE IF EXISTS {} """.format(tableName) 
-    cursor.execute(sql_command)
-    conn.commit()
-    conn.close()
-    print "Database removed" 
-
-        
-# addToDatabase()
-def addToDatabase(dataFrame, tableName, connect):
-    # function which adds scraped data to database db
-    conn = pymysql.connect(connect[0], connect[1], connect[2], connect[3])
-    dataFrame.to_sql(name = tableName, con = conn, flavor ='mysql', if_exists = 'append', index=False)       
-    conn.commit()
-    conn.close()
-
-        
-# readDatabase(connect, sqlQuery)
-def readDatabase(connect, sqlQuery):
-    # Uses the query sqlQuery to read the database specified in connect
-    conn = pymysql.connect(connect[0], connect[1], connect[2], connect[3])               
-    dataFrame = pd.read_sql(sqlQuery, conn)
-    conn.close()
-    return dataFrame 
-
-##################
-
-    # normalizeData()
+# normalizeData()
 def normalizeData(dataFrame):
     # normalizes the data in seasonResults to the number of
     # games played and returns the new dataframe.
@@ -104,7 +55,7 @@ def createPastData(connect):
     # This data is then added to the seasonResultsPastResults table.
     # Read in data
     sqlQuery = '''SELECT * FROM seasonResults'''
-    dataFrame = readDatabase(connect, sqlQuery)
+    dataFrame = DB.readDatabase(connect, sqlQuery)
     # Clean the Position column.
     dataFrame = reSort(dataFrame, range(2012,2017))
     # Give data frame containing normalized data
@@ -130,16 +81,14 @@ def createPastData(connect):
             # Add to the dataFrame
             dataFrameTmp.loc[(dataFrameTmp["Year"]==year) & (dataFrameTmp["TeamName"]==team),colName+"_1"] = tmpDat
             dataFrameTmp.loc[(dataFrameTmp["Year"]==year) & (dataFrameTmp["TeamName"]==team),colName+"_2"] = tmpDat2
-    #print dataFrameTmp
     # Add to database seasonResultsPastResults
-    addToDatabase(dataFrameTmp, 'seasonResultsPastResults', connect)
-
+    DB.addToDatabase(dataFrameTmp, 'seasonResultsPastResults', connect)
 
 
 tf2 = 0
 #Set to True to remove the table
 if tf2:
-    removeTable('seasonResultsPastResults', connect)
+    DB.removeTable('seasonResultsPastResults', connect)
 #Set to True to create the table
 if tf2:
     rowList = 'BonusP FLOAT, BonusP_1 FLOAT, BonusP_2 FLOAT, \
@@ -148,7 +97,7 @@ if tf2:
     PDiff FLOAT, PDiff_1 FLOAT, PDiff_2 FLOAT, \
     PFor FLOAT, PFor_1 FLOAT, PFor_2 FLOAT, Position INT, \
     TeamName TEXT, Won FLOAT, Won_1 FLOAT, Won_2 FLOAT, Year INT'
-    createTable('seasonResultsPastResults', rowList, connect)
+    DB.createTable('seasonResultsPastResults', rowList, connect)
 if tf2:
     createPastData(connect)
     
@@ -158,5 +107,5 @@ sqlQuery = '''SELECT * FROM seasonResultsPastResults'''    #283 rows total
 #sqlQuery = '''SELECT TeamName, Position, Won, Points FROM seasonResultsPastResults WHERE Year >= 2015 ORDER BY Year, Position''' 
 ##sqlQuery = '''SELECT * FROM seasonResults WHERE TeamName LIKE '%kin%' OR TeamName LIKE '%souk%' '''
 #sqlQuery = '''SELECT DISTINCT TeamName FROM seasonResults'''       #18 rows total                
-dataFrame = readDatabase(connect, sqlQuery)
+dataFrame = DB.readDatabase(connect, sqlQuery)
 print dataFrame
