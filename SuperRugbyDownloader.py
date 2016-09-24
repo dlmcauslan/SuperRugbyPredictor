@@ -40,10 +40,11 @@ Modified: 24/09/2016
     * This simple downloader function works up to and including 2016.
     * Moved data cleaning functions to its own file
     * Moved dataBase access functions to their own file which is now imported.
+    * Created downloadAllIndividual function which downloads all the individual match
+    results and saves them in the matchResults SQL table.
     
     
 TO DO: Download individual game results, such as tries scored, penalties, conversions etc.
-       Make SQL table of individual game results
         
 '''
 
@@ -245,11 +246,12 @@ def simpleDownloader2(year, connect):
                 txt = col.get_text()
                 # Columns 2 and 4 are the home and away team names
                 if n in [2,4]:
-                    # Needed to add this if statement because there is 2 transvaal teams in 1996
-                    if str.split(str(txt))[0] == 'Northern':
-                        tempRow.append('Bulls')
+                    # Need to treat remove spaces before and after team names before adding to dataframe
+                    splName = str.split(str(txt))
+                    if len(splName) == 2:
+                        tempRow.append("{} {}".format(splName[0],splName[1]))
                     else:
-                        tempRow.append(str.split(str(txt))[-1])
+                        tempRow.append(splName[0])
                 # Column 3 is the score. Split this up into the home and away scores and add as
                 #separate columns to the data frame.
                 if n == 3:
@@ -271,7 +273,12 @@ def simpleDownloader2(year, connect):
             # Add row to data frame (not including playoffs)
             if tempRow != []:
                 rugbyData = rugbyData.append(pd.DataFrame([tempRow], columns=colNames), ignore_index=True)
-       
+                
+    # Clean the TeamName column
+    rugbyData = cleanNameData(rugbyData)  
+    # Add to SQL database
+    DB.addToDatabase(rugbyData, 'matchResults', connect)
+    # Return data       
     return rugbyData
 
 '''
@@ -441,23 +448,37 @@ def cleanNameData(datFrame):
     nameDict = {"Highlanders": hig, "Crusaders": cru, "Chiefs": chi, "Hurricanes": hur, "Blues": blu, "Reds": red, "Brumbies": bru, "Waratahs": war, "Force": forc,
                 "Sharks": sha, "Bulls": bul, "Lions": lio, "Stormers": sto, "Cheetahs": che}
     
-    # For each TeamName in the input dataframe, loop over the dictionary items, if TeamName is in the dictionary, use the corresponding dictionary
-    # key as the new TeamName. Else the TeamName is unchanged.
-    for i in xrange(len(datFrame.TeamName)):
-        for item in nameDict.items():
-            if datFrame["TeamName"][i] in item[1]:
-                datFrame["TeamName"][i] = item[0]
+    # Columns that correspond to team names are TeamName, AwayTeam, HomeTeam
+    nameCols = ['TeamName', 'HomeTeam', 'AwayTeam']    
+    # Loop over columns that correspond to a team name.
+    for colName in nameCols:
+        if colName in datFrame.columns:
+            # For each TeamName in the input dataframe, loop over the dictionary items, if TeamName is in the dictionary, use the corresponding dictionary
+            # key as the new TeamName. Else the TeamName is unchanged.
+            for i in xrange(len(datFrame[colName])):
+                for team in nameDict:
+                    if datFrame[colName][i] in nameDict[team]:
+                        datFrame[colName][i] = team
     # Return the input data frame, with TeamNames now cleaned.
     return datFrame
     
 
 # Downloads all the data
 def downloadAll(connect):
-    years = range(1996,2017,1)
+    years = range(1996,2017)
     for year in years:
         print year
         downloader(year, connect)
-        
+
+                
+# Downloads individual match data for all years
+def downloadAllIndividual(connect):
+    years = range(1996,2017)
+    for year in years:
+        print year
+        simpleDownloader2(year, connect)
+
+                
 # updateData(year)
 def updateData(year, connect):
     # removes data for year, and redownloads it. Useful for updating DB after a game
@@ -473,6 +494,10 @@ def updateData(year, connect):
     # Redownload data for that year
     downloader(year, connect)
     print "{} data updated".format(year)
+
+
+#########################################################################
+### Create and add data to the overall season results database
 
 #Set to True to remove the table
 tf = 0
@@ -491,14 +516,27 @@ if tf:
 if 0:
     updateData(2016, connect)
 
-        
-#dF = downloader2(2013,connect)
-dF = simpleDownloader2(2016,connect)
+
+### Create and add data to the individual match results database
+#Set to True to remove the table
+tf2 = 0
+if tf2:
+    DB.removeTable('matchResults', connect)
+#Set to True to create the table
+if tf2:
+    rowList = 'HomeTeam TEXT, HomeScore INT, AwayScore INT, AwayTeam TEXT, Week INT, Year INT'
+    DB.createTable('matchResults', rowList, connect)
+#Set to true to download data                                                 
+if tf2:                                                                
+    downloadAllIndividual(connect)        
+                
+                                
+#dF = simpleDownloader2(1998,connect)
 #print dF
 
 
 ## Temporary code for testing
-sqlQuery = '''SELECT * FROM seasonResults'''    #283 rows total
+sqlQuery = '''SELECT * FROM seasonResults '''    #283 rows total
 #sqlQuery = '''SELECT TeamName, Position, Won, Points FROM seasonResultsPastResults WHERE Year >= 2015 ORDER BY Year, Position''' 
 ##sqlQuery = '''SELECT * FROM seasonResults WHERE TeamName LIKE '%kin%' OR TeamName LIKE '%souk%' '''
 #sqlQuery = '''SELECT DISTINCT TeamName FROM seasonResults'''       #18 rows total                
