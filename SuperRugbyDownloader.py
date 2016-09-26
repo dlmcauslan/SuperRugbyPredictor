@@ -42,9 +42,10 @@ Modified: 24/09/2016
     * Moved dataBase access functions to their own file which is now imported.
     * Created downloadAllIndividual function which downloads all the individual match
     results and saves them in the matchResults SQL table.
+    * Fixed copying on a slice of a data frame warning message. datFrame.loc[i,colName] = team instead of datFrame[colName][i] = team
     
     
-TO DO: Download individual game results, such as tries scored, penalties, conversions etc.
+TO DO: Download individual game results, such as tries scored, penalties, conversions etc. - this has been pushed to a later version
         
 '''
 
@@ -68,7 +69,7 @@ connect = [host, user, passwd, db]
 def downloader(year, connect):
     #Creates dataframe
     colNames =["Position", "TeamName", "Played", "Won", "Draw", "Lost", 
-            "PFor", "PAgainst", "PDiff", "BonusP", "Points"]
+            "PtsF", "PtsA", "PtsD", "BP", "Points"]
     rugbyData = pd.DataFrame(dict.fromkeys(colNames,[]))
     
     # Gets different URLs because the competition changed its name over the years.
@@ -188,6 +189,8 @@ def downloader(year, connect):
     rugbyData = cleanNameData(rugbyData)  
     # Add to SQL database
     DB.addToDatabase(rugbyData, 'seasonResults', connect)
+    # Return datafram
+    return rugbyData
 
 
 # Downloads individual match data (teams and score
@@ -280,6 +283,131 @@ def simpleDownloader2(year, connect):
     DB.addToDatabase(rugbyData, 'matchResults', connect)
     # Return data       
     return rugbyData
+
+
+# cleanNameData(datFrame)
+def cleanNameData(datFrame):
+    # Create a dictionary that includes all the possible names for different teams
+    hig = "Otago Highlanders"
+    cru = "Canterbury Crusaders"
+    chi = "Waikato Chiefs"
+    hur = "Wellington Hurricanes"
+    blu = "Auckland Blues"   
+    red = "Queensland Reds"
+    bru = "ACT Brumbies"
+    war = "NSW Waratahs"
+    forc = "Western Force"
+    sha = "Natal Sharks"
+    bul = ["Bulls","'Bulls", "Northern Bulls", "Northern Transvaal"]
+    lio = ["Lions", "Cats", "Gauteng Lions", "Transvaal"]
+    sto = ["Western Province", "Stormers"]
+    che = ["Cheetahs", "Free State"]
+    ## Kings, Rebels, Jaguares and Sunwolves do not need to be cleaned
+    
+    nameDict = {"Highlanders": hig, "Crusaders": cru, "Chiefs": chi, "Hurricanes": hur, "Blues": blu, "Reds": red, "Brumbies": bru, "Waratahs": war, "Force": forc,
+                "Sharks": sha, "Bulls": bul, "Lions": lio, "Stormers": sto, "Cheetahs": che}
+    
+    # Columns that correspond to team names are TeamName, AwayTeam, HomeTeam
+    nameCols = ['TeamName', 'HomeTeam', 'AwayTeam']    
+    # Loop over columns that correspond to a team name.
+    for colName in nameCols:
+        if colName in datFrame.columns:
+            # For each TeamName in the input dataframe, loop over the dictionary items, if TeamName is in the dictionary, use the corresponding dictionary
+            # key as the new TeamName. Else the TeamName is unchanged.
+            for i in xrange(len(datFrame[colName])):
+                for team in nameDict:
+                    # Fixed copying on a slice of a data frame warning message. datFrame.loc[i,colName] = team instead of datFrame[colName][i] = team
+                    if datFrame.loc[i,colName] in nameDict[team]:
+                        datFrame.loc[i,colName] = team
+    # Return the input data frame, with TeamNames now cleaned.
+    return datFrame
+    
+
+# Downloads all the data
+def downloadAll(connect):
+    years = range(1996,2017)
+    for year in years:
+        print year
+        downloader(year, connect)
+
+                
+# Downloads individual match data for all years
+def downloadAllIndividual(connect):
+    years = range(1996,2017)
+    for year in years:
+        print year
+        simpleDownloader2(year, connect)
+
+                
+# updateData(year)
+def updateData(year, connect):
+    # removes data for year, and redownloads it. Useful for updating DB after a game
+    # without having to redownload entire database.
+    # Remove all current data for that year
+    conn = pymysql.connect(connect[0], connect[1], connect[2], connect[3])
+    cursor = conn.cursor()        
+    #Remove database
+    sql_command = """ DELETE FROM seasonResults WHERE Year = {} """.format(year)
+    cursor.execute(sql_command)
+    conn.commit()
+    conn.close()
+    # Redownload data for that year
+    downloader(year, connect)
+    print "{} data updated".format(year)
+
+
+#########################################################################
+### Create and add data to the overall season results database
+
+#Set to True to remove the table
+tf = 0
+if tf:
+    DB.removeTable('seasonResults', connect)
+#Set to True to create the table
+if tf:
+    rowList = 'BP INT, Draw INT, Played INT, Lost INT, Points INT, \
+    PtsA INT, PtsD INT, PtsF INT, Position INT, \
+    TeamName TEXT, Won INT, Year INT'
+    DB.createTable('seasonResults', rowList, connect)
+#Set to true to download data                                                 
+if tf:                                                                
+    downloadAll(connect)
+# Set to True to update a particular years data
+if 0:
+    updateData(2016, connect)
+
+
+### Create and add data to the individual match results database
+#Set to True to remove the table
+tf2 = 0
+if tf2:
+    DB.removeTable('matchResults', connect)
+#Set to True to create the table
+if tf2:
+    rowList = 'HomeTeam TEXT, HomeScore INT, AwayScore INT, AwayTeam TEXT, Week INT, Year INT'
+    DB.createTable('matchResults', rowList, connect)
+#Set to true to download data                                                 
+if tf2:                                                                
+    downloadAllIndividual(connect)        
+                
+                                
+#dF = simpleDownloader2(1998,connect)
+#dF = downloader(1996,connect)
+#print dF
+
+
+## Temporary code for testing
+sqlQuery = '''SELECT * FROM seasonResults '''    #283 rows total
+#sqlQuery = '''SELECT * FROM matchResults '''    #1850 rows total
+#sqlQuery = '''SELECT TeamName, Position, Won, Points FROM seasonResultsPastResults WHERE Year >= 2015 ORDER BY Year, Position''' 
+##sqlQuery = '''SELECT * FROM seasonResults WHERE TeamName LIKE '%kin%' OR TeamName LIKE '%souk%' '''
+#sqlQuery = '''SELECT DISTINCT TeamName FROM seasonResults'''       #18 rows total                
+dataFrame = DB.readDatabase(connect, sqlQuery)
+print dataFrame
+#dF = reSort(dataFrame, range(2012,2017))
+#print dF.loc[dF["Year"]==2012,["TeamName", "Position","Points","Won", "PDiff"]]
+
+
 
 '''
 # Downloads individual match data
@@ -426,121 +554,3 @@ def tryPenConData(datString, year):
 '''   
   
    
-# cleanNameData(datFrame)
-def cleanNameData(datFrame):
-    # Create a dictionary that includes all the possible names for different teams
-    hig = "Otago Highlanders"
-    cru = "Canterbury Crusaders"
-    chi = "Waikato Chiefs"
-    hur = "Wellington Hurricanes"
-    blu = "Auckland Blues"   
-    red = "Queensland Reds"
-    bru = "ACT Brumbies"
-    war = "NSW Waratahs"
-    forc = "Western Force"
-    sha = "Natal Sharks"
-    bul = ["Bulls","'Bulls", "Northern Bulls", "Northern Transvaal"]
-    lio = ["Lions", "Cats", "Gauteng Lions", "Transvaal"]
-    sto = ["Western Province", "Stormers"]
-    che = ["Cheetahs", "Free State"]
-    ## Kings, Rebels, Jaguares and Sunwolves do not need to be cleaned
-    
-    nameDict = {"Highlanders": hig, "Crusaders": cru, "Chiefs": chi, "Hurricanes": hur, "Blues": blu, "Reds": red, "Brumbies": bru, "Waratahs": war, "Force": forc,
-                "Sharks": sha, "Bulls": bul, "Lions": lio, "Stormers": sto, "Cheetahs": che}
-    
-    # Columns that correspond to team names are TeamName, AwayTeam, HomeTeam
-    nameCols = ['TeamName', 'HomeTeam', 'AwayTeam']    
-    # Loop over columns that correspond to a team name.
-    for colName in nameCols:
-        if colName in datFrame.columns:
-            # For each TeamName in the input dataframe, loop over the dictionary items, if TeamName is in the dictionary, use the corresponding dictionary
-            # key as the new TeamName. Else the TeamName is unchanged.
-            for i in xrange(len(datFrame[colName])):
-                for team in nameDict:
-                    if datFrame[colName][i] in nameDict[team]:
-                        datFrame[colName][i] = team
-    # Return the input data frame, with TeamNames now cleaned.
-    return datFrame
-    
-
-# Downloads all the data
-def downloadAll(connect):
-    years = range(1996,2017)
-    for year in years:
-        print year
-        downloader(year, connect)
-
-                
-# Downloads individual match data for all years
-def downloadAllIndividual(connect):
-    years = range(1996,2017)
-    for year in years:
-        print year
-        simpleDownloader2(year, connect)
-
-                
-# updateData(year)
-def updateData(year, connect):
-    # removes data for year, and redownloads it. Useful for updating DB after a game
-    # without having to redownload entire database.
-    # Remove all current data for that year
-    conn = pymysql.connect(connect[0], connect[1], connect[2], connect[3])
-    cursor = conn.cursor()        
-    #Remove database
-    sql_command = """ DELETE FROM seasonResults WHERE Year = {} """.format(year)
-    cursor.execute(sql_command)
-    conn.commit()
-    conn.close()
-    # Redownload data for that year
-    downloader(year, connect)
-    print "{} data updated".format(year)
-
-
-#########################################################################
-### Create and add data to the overall season results database
-
-#Set to True to remove the table
-tf = 0
-if tf:
-    DB.removeTable('seasonResults', connect)
-#Set to True to create the table
-if tf:
-    rowList = 'BonusP INT, Draw INT, Played INT, Lost INT, Points INT, \
-    PAgainst INT, PDiff INT, PFor INT, Position INT, \
-    TeamName TEXT, Won INT, Year INT'
-    DB.createTable('seasonResults', rowList, connect)
-#Set to true to download data                                                 
-if tf:                                                                
-    downloadAll(connect)
-# Set to True to update a particular years data
-if 0:
-    updateData(2016, connect)
-
-
-### Create and add data to the individual match results database
-#Set to True to remove the table
-tf2 = 0
-if tf2:
-    DB.removeTable('matchResults', connect)
-#Set to True to create the table
-if tf2:
-    rowList = 'HomeTeam TEXT, HomeScore INT, AwayScore INT, AwayTeam TEXT, Week INT, Year INT'
-    DB.createTable('matchResults', rowList, connect)
-#Set to true to download data                                                 
-if tf2:                                                                
-    downloadAllIndividual(connect)        
-                
-                                
-#dF = simpleDownloader2(1998,connect)
-#print dF
-
-
-## Temporary code for testing
-sqlQuery = '''SELECT * FROM seasonResults '''    #283 rows total
-#sqlQuery = '''SELECT TeamName, Position, Won, Points FROM seasonResultsPastResults WHERE Year >= 2015 ORDER BY Year, Position''' 
-##sqlQuery = '''SELECT * FROM seasonResults WHERE TeamName LIKE '%kin%' OR TeamName LIKE '%souk%' '''
-#sqlQuery = '''SELECT DISTINCT TeamName FROM seasonResults'''       #18 rows total                
-dataFrame = DB.readDatabase(connect, sqlQuery)
-print dataFrame
-#dF = reSort(dataFrame, range(2012,2017))
-#print dF.loc[dF["Year"]==2012,["TeamName", "Position","Points","Won", "PDiff"]]
