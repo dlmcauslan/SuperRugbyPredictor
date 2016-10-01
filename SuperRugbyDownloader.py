@@ -297,10 +297,10 @@ def cleanNameData(datFrame):
     bru = "ACT Brumbies"
     war = "NSW Waratahs"
     forc = "Western Force"
-    sha = "Natal Sharks"
+    sha = ["Natal Sharks", "Coastal Sharks"]
     bul = ["Bulls","'Bulls", "Northern Bulls", "Northern Transvaal"]
-    lio = ["Lions", "Cats", "Gauteng Lions", "Transvaal"]
-    sto = ["Western Province", "Stormers"]
+    lio = ["Lions", "Cats", "Gauteng Lions", "Transvaal", "Golden Cats"]
+    sto = ["Western Province", "Stormers", "Western Stormers"]
     che = ["Cheetahs", "Free State"]
     ## Kings, Rebels, Jaguares and Sunwolves do not need to be cleaned
     
@@ -379,7 +379,7 @@ if 0:
 
 ### Create and add data to the individual match results database
 #Set to True to remove the table
-tf2 = 0
+tf2 = 1
 if tf2:
     DB.removeTable('matchResults', connect)
 #Set to True to create the table

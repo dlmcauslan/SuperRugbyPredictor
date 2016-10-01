@@ -6,8 +6,8 @@ Created: 24/09/2016
     Data to process, previous 3 years + current season, total won, total lost, points for, points against, table points for both teams
      Head to head win ratio from home teams perspective, Home teams total home record against all teams, Away teams total away record against all teams
     
-     - solving for HomeTeamWinQ (does the home team win? t/f) or HomeTeamPtsDiff (What is home team score - away team score?)
-     - HomeTeam, AwayTeam, Week, Year are not included in ML model
+     - solving for HomeTeamWinQ (does the home team win? t/f) 1 for a win, -1 for a loss, 0 for a draw or HomeTeamPtsDiff (What is home team score - away team score?)
+     - Week, Year are not included in ML model
      
     rowList = 'HomeTeamWinQ INT, HomeTeamPtsDiff Float, HomeTeam TEXT, HomeScore INT, AwayScore INT, AwayTeam TEXT, Week INT, Year INT, \
                 H2HWinRat_HmeTeam FLOAT, H_HomeRec FLOAT, A_AwayRec FLOAT, H_PlayedCurr INT, A_PlayedCurr INT, \
@@ -46,7 +46,8 @@ Created: 24/09/2016
         PtsA - points scored against
     
     Lost, Won, Points, PtsF, PtsA are all normalised over the number of games played that season
-    H2HWinRat_HmeTeam, H_HomeRec, A_AwayRec are all normalised to 1.
+    H_HomeRec, A_AwayRec are all normalised to 1.
+    H2HWinRat_HmeTeam is normalised to +-1 (negative if the away team has the better H2H record).
         
     
 Modified 24/09/2016:
@@ -57,6 +58,12 @@ Modified 25/09/2016:
     joins on matchResults table.
     * Added columns for which team wins, points differential, Current season wins,
     loses, points for and points against for both home and away teams.
+    
+Modified 01/10/2016:
+    * Added Head to Head number of games played and home team Head to Head ratio.
+    * Added home and away records for all teams.
+    * Normalized current year results.
+    * All new data columns have now been created.
 '''
 
 import pandas as pd
@@ -74,19 +81,17 @@ pd.set_option('precision', 2)
 host = "localhost"; user = "root"; passwd = "DLMPa$$word"; db = "superRugbyPredictor"               # Desktop
 connect = [host, user, passwd, db]
 
-# normalizeData()
+
 def normalizeData(dataFrame):
-    # normalizes the data in seasonResults to the number of
-    # games played and returns the new dataframe.
+    ''' normalizes the data in seasonResults to the number of games played and returns the new dataframe. '''
     for colName in ["BP", "Draw", "Lost", "Points", "PtsA", "PtsD","PtsF","Won"]:
         dataFrame[colName] = dataFrame[colName]/dataFrame["Played"]
     return dataFrame
 
 
-# reSort()
 def reSort(dataFrame, yearVect):
-    # Changes the value of the position column for later years where the conference system was in place 
-    # so that the teams are ranked properly.
+    ''' Changes the value of the position column for later years where the conference system was in place 
+    so that the teams are ranked properly. '''
     # Loop over years
     for year in yearVect:
         # Create a temporary dataframe containing only that years data, sorted by Points, Games Won, Point Differential
@@ -99,11 +104,11 @@ def reSort(dataFrame, yearVect):
             dataFrame.loc[(dataFrame["TeamName"] == team) & (dataFrame["Year"] == year),"Position"] = n      #Probably need a year selecter in here too
     return dataFrame    
 
-# createPastData()
+
 def createPastData(connect):
-    # Reads the data from the seasonResults table, normalizes it, then adds columns
-    # that give the data for the teams results the previous 2 years, e.g. Win_1, Win_2.
-    # This data is then added to the seasonResultsPastResults table.
+    ''' Reads the data from the seasonResults table, normalizes it, then adds columns
+    that give the data for the teams results the previous 2 years, e.g. Win_1, Win_2.
+    This data is then added to the seasonResultsPastResults table. '''
     # Read in data
     sqlQuery = '''SELECT * FROM seasonResults'''
     dataFrame = DB.readDatabase(connect, sqlQuery)
@@ -154,150 +159,197 @@ if tf2:
     createPastData(connect)
     
  
-sqlQuery = '''SELECT Lost, Lost1, Lost2, Points, Points1, Points2, PtsA, PtsA1, PtsA2, PtsF, PtsF1, PtsF2, TeamName, Won, Won1, Won2 
-            FROM seasonResultsPastResults WHERE Year = 1996'''   
-dFPast = DB.readDatabase(connect, sqlQuery)       
-print dFPast
-sqlQuery = '''SELECT * FROM matchResults ORDER BY Year, Week'''   
-dFMatch = DB.readDatabase(connect, sqlQuery)
-print dFMatch
-
-#sqlQuery = '''
-#SELECT mR.Year, mR.Week, mR.HomeTeam, mR.AwayTeam, mR.HomeScore, mR.AwayScore,
-#        sR.Won AS H_Won, Sr.Lost AS H_Lost, sR.Points AS H_Points, sR.PtsF AS H_PtsF, sR.PtsA AS H_PtsA,
-#        sRA.Won AS A_Won, SrA.Lost AS A_Lost, sRA.Points AS A_Points, sRA.PtsF AS A_PtsF, sRA.PtsA AS A_PtsA,
-#        sR.Won1 AS H_Won1, Sr.Lost1 AS H_Lost1, sR.Points1 AS H_Points1, sR.PtsF1 AS H_PtsF1, sR.PtsA1 AS H_PtsA1,
-#        sRA.Won1 AS A_Won1, SrA.Lost1 AS A_Lost1, sRA.Points1 AS A_Points1, sRA.PtsF1 AS A_PtsF1, sRA.PtsA1 AS A_PtsA1,
-#        sR.Won2 AS H_Won2, Sr.Lost2 AS H_Lost2, sR.Points2 AS H_Points2, sR.PtsF2 AS H_PtsF2, sR.PtsA2 AS H_PtsA2,
-#        sRA.Won2 AS A_Won2, SrA.Lost2 AS A_Lost2, sRA.Points2 AS A_Points2, sRA.PtsF2 AS A_PtsF2, sRA.PtsA2 AS A_PtsA2
-#FROM matchResults AS mR
-#LEFT JOIN seasonResultsPastResults AS sR
-#ON mR.HomeTeam=sR.TeamName AND mR.Year = sR.Year
-#LEFT JOIN seasonResultsPastResults AS sRA
-#ON mR.AwayTeam=sRA.TeamName AND mR.Year = sRA.Year
-#WHERE mR.Year = 1996
-#ORDER BY Year, Week           
-#'''
-sqlQuery = '''
-SELECT mR.Year, mR.Week, mR.HomeTeam, mR.AwayTeam, mR.HomeScore, mR.AwayScore,
-        sR.Won AS H_Won
-FROM matchResults AS mR
-LEFT JOIN seasonResultsPastResults AS sR
-ON mR.HomeTeam=sR.TeamName AND mR.Year = sR.Year
-LEFT JOIN seasonResultsPastResults AS sRA
-ON mR.AwayTeam=sRA.TeamName AND mR.Year = sRA.Year
-WHERE mR.Year <= 1997
-ORDER BY Year, Week           
-'''
-dFJoin = DB.readDatabase(connect, sqlQuery)
-print dFJoin.head()
-#print dFJoin.info()
-# Set up a temporary dataframe
-dFTmp = dFJoin
-# New columns to add
-"""H2HWinRat_HmeTeam - Head to head win ratio from home teams perspective
-H_HomeRec - Home teams total home record against all teams
-A_AwayRec - Away teams total away record against all teams
-H_(A_)PlayedCurr - Number of games home (away) team has played so far this season - note this is different than week because teams don't play every week.
-H2HGamesPlayed - Number of times the two teams have played.
-H_(A_)NumHome(Away)Games - Total number of home (away) games the home (away) team has played."""
-colNames = ['HomeTeamWinQ', 'HomeTeamPtsDiff',
-            'H_PlayedCurr', 'A_PlayedCurr',
-            'H_WonCurr', 'H_LostCurr', 'A_WonCurr', 'A_LostCurr',   
-            'H_PtsFCurr', 'H_PtsACurr', 'A_PtsFCurr', 'A_PtsACurr']
-            #'H2HGamesPlayed', 'H_NumHomeGames', 'A_NumAwayGames', 'H2HWinRat_HmeTeam', 'H_HomeRec', 'A_AwayRec', 
-            #]
-
-def currStats(dFTmp, n, team, col):
-    y = dFTmp.loc[n,"Year"]
+ 
+def currStats(dFTmp, row, team, col):
+    ''' Calculates the current season statistics for each team on  a round by round basis '''
+    y = dFTmp.loc[row,"Year"]
     sfx = col.split('_')[-1]
     # tmp is all of the games the team has had so far this year
-    tmp = dFTmp.loc[(dFTmp["Year"] == y) & ((dFTmp["HomeTeam"] == team) | (dFTmp["AwayTeam"] == team)),:].loc[:n]
+    tmp = dFTmp.loc[(dFTmp["Year"] == y) & ((dFTmp["HomeTeam"] == team) | (dFTmp["AwayTeam"] == team)),:].loc[:row]
     # If its the teams first game of the year, set to zero
     if len(tmp) <= 1:
-        dFTmp.loc[n,col] = 0    
+        dFTmp.loc[row,col] = 0    
     else:
         # tmpRow is what happened the last time the team played this year
         tmpRow = tmp.iloc[-2]
         # If team is home team in the last game
         if tmpRow["HomeTeam"] == team:
             if sfx == 'PlayedCurr':
-                dFTmp.loc[n,col] = tmpRow["H_{}".format(sfx)]+1
+                dFTmp.loc[row,col] = tmpRow["H_{}".format(sfx)]+1
             if sfx == 'LostCurr':
                 if tmpRow["HomeTeamWinQ"] == -1:
-                    dFTmp.loc[n,col] = tmpRow["H_{}".format(sfx)]+1
+                    dFTmp.loc[row,col] = tmpRow["H_{}".format(sfx)]+1
                 else:
-                    dFTmp.loc[n,col] = tmpRow["H_{}".format(sfx)]
+                    dFTmp.loc[row,col] = tmpRow["H_{}".format(sfx)]
             if sfx == 'WonCurr':
                 if tmpRow["HomeTeamWinQ"] == 1:
-                    dFTmp.loc[n,col] = tmpRow["H_{}".format(sfx)]+1
+                    dFTmp.loc[row,col] = tmpRow["H_{}".format(sfx)]+1
                 else:
-                    dFTmp.loc[n,col] = tmpRow["H_{}".format(sfx)]
+                    dFTmp.loc[row,col] = tmpRow["H_{}".format(sfx)]
             if sfx == 'PtsFCurr':
-                dFTmp.loc[n,col] = tmpRow["H_{}".format(sfx)]+tmpRow["HomeScore"]
+                dFTmp.loc[row,col] = tmpRow["H_{}".format(sfx)]+tmpRow["HomeScore"]
             if sfx == 'PtsACurr':
-                dFTmp.loc[n,col] = tmpRow["H_{}".format(sfx)]+tmpRow["AwayScore"]
+                dFTmp.loc[row,col] = tmpRow["H_{}".format(sfx)]+tmpRow["AwayScore"]
 
         # Otherwise team is away team in the last game
         else:
             if sfx == 'PlayedCurr':
-                dFTmp.loc[n,col] = tmpRow["A_{}".format(sfx)]+1
+                dFTmp.loc[row,col] = tmpRow["A_{}".format(sfx)]+1
             if sfx == 'LostCurr':
                 if tmpRow["HomeTeamWinQ"] == 1:
-                    dFTmp.loc[n,col] = tmpRow["A_{}".format(sfx)]+1
+                    dFTmp.loc[row,col] = tmpRow["A_{}".format(sfx)]+1
                 else:
-                    dFTmp.loc[n,col] = tmpRow["A_{}".format(sfx)]
+                    dFTmp.loc[row,col] = tmpRow["A_{}".format(sfx)]
             if sfx == 'WonCurr':
                 if tmpRow["HomeTeamWinQ"] == -1:
-                    dFTmp.loc[n,col] = tmpRow["A_{}".format(sfx)]+1
+                    dFTmp.loc[row,col] = tmpRow["A_{}".format(sfx)]+1
                 else:
-                    dFTmp.loc[n,col] = tmpRow["A_{}".format(sfx)]
+                    dFTmp.loc[row,col] = tmpRow["A_{}".format(sfx)]
             if sfx == 'PtsFCurr':
-                dFTmp.loc[n,col] = tmpRow["A_{}".format(sfx)]+tmpRow["AwayScore"]
+                dFTmp.loc[row,col] = tmpRow["A_{}".format(sfx)]+tmpRow["AwayScore"]
             if sfx == 'PtsACurr':
-                dFTmp.loc[n,col] = tmpRow["A_{}".format(sfx)]+tmpRow["HomeScore"]
+                dFTmp.loc[row,col] = tmpRow["A_{}".format(sfx)]+tmpRow["HomeScore"]
                 
     return dFTmp
 
-# Loop over the rows in the dataFrame adding the new columns
-for n in xrange(len(dFTmp)):
-#for n in xrange(5):
-    # Initialize some values
-    for c in colNames:
-        dFTmp.loc[n,c] = 0
-    dFTmp.loc[n,"HomeTeamPtsDiff"] = dFTmp.loc[n,"HomeScore"]-dFTmp.loc[n,"AwayScore"]
-
-    # Who wins       
-    if dFTmp.loc[n,"HomeScore"] > dFTmp.loc[n,"AwayScore"]:
-        dFTmp.loc[n,"HomeTeamWinQ"] = 1
-    elif dFTmp.loc[n,"HomeScore"] < dFTmp.loc[n,"AwayScore"]:
-        dFTmp.loc[n,"HomeTeamWinQ"] = -1
-        
-    #w = dFTmp.loc[n,"Week"] 
-    #y = dFTmp.loc[n,"Year"] 
-    ht = dFTmp.loc[n,"HomeTeam"]
-    at = dFTmp.loc[n,"AwayTeam"]
+def headToHead(dFTmp, row, homeTeam, awayTeam):
+    ''' Calculates the number of times the two teams have played and their head to head ratio win ratio'''
+    # tmp is all of the games the two teams have played in the past
+    tmp = dFTmp.loc[((dFTmp["HomeTeam"] == homeTeam) & (dFTmp["AwayTeam"] == awayTeam)) | ((dFTmp["HomeTeam"] == awayTeam) & (dFTmp["AwayTeam"] == homeTeam)),:].loc[:row]
+    # If its the first time the two teams have played, set to zero
+    if len(tmp) <= 1:
+        dFTmp.loc[row,'H2HGamesPlayed'] = 0
+        dFTmp.loc[row,'H2HWinRat_HmeTeam'] = 0
+    else:
+        # tmpRow is what happened the last time the two teams played
+        tmpRow = tmp.iloc[-2]
+        # Add on one to the number of games played
+        dFTmp.loc[row,'H2HGamesPlayed']=tmpRow.H2HGamesPlayed+1
+        # Update the head to head ratio - (oldH2Hratio * oldH2Hplayed + oldHomeTeamWinQ)/newH2Hplayed
+        newHeadToHead = (tmpRow.H2HWinRat_HmeTeam * tmpRow.H2HGamesPlayed + tmpRow.HomeTeamWinQ)/dFTmp.loc[row,'H2HGamesPlayed']
+        # If the current home team was the home team last time
+        if homeTeam == tmpRow["HomeTeam"]:
+            dFTmp.loc[row,'H2HWinRat_HmeTeam'] = newHeadToHead
+        else:
+            dFTmp.loc[row,'H2HWinRat_HmeTeam'] = -newHeadToHead    
+    return dFTmp
     
-    # The team stats for the current year ------------THIS can probably be put in a loop 
-    # For Home team
-    dFTmp = currStats(dFTmp, n, ht, "H_PlayedCurr")
-    dFTmp = currStats(dFTmp, n, ht, "H_LostCurr")
-    dFTmp = currStats(dFTmp, n, ht, "H_WonCurr")
-    dFTmp = currStats(dFTmp, n, ht, "H_PtsFCurr")
-    dFTmp = currStats(dFTmp, n, ht, "H_PtsACurr")
-    # For Away team
-    dFTmp = currStats(dFTmp, n, at, "A_PlayedCurr")
-    dFTmp = currStats(dFTmp, n, at, "A_LostCurr")
-    dFTmp = currStats(dFTmp, n, at, "A_WonCurr")
-    dFTmp = currStats(dFTmp, n, at, "A_PtsFCurr")
-    dFTmp = currStats(dFTmp, n, at, "A_PtsACurr")
+def homeAwayRecord(dFTmp, row, team, prefix):
+    ''' Calculates the teams home and away record '''
+    homeOrAwayColumns = {'H': ('HomeTeam', 'H_NumHomeGames', 'H_HomeRec'), 'A': ('AwayTeam', 'A_NumAwayGames', 'A_AwayRec')}
+    # tmp is all of the games the home(away) team has played home(away) in the past
+    tmp = dFTmp.loc[dFTmp[homeOrAwayColumns[prefix][0]] == team ,:].loc[:row]
+    # If its the first time the team has played at home or away, set to zero
+    if len(tmp) <= 1:
+        dFTmp.loc[row, homeOrAwayColumns[prefix][1]] = 0
+        dFTmp.loc[row, homeOrAwayColumns[prefix][2]] = 0
+    else:
+        # tmpRow is what happened the last time the two teams played
+        tmpRow = tmp.iloc[-2]
+        # Increase the number of home (away) games by 1
+        dFTmp.loc[row, homeOrAwayColumns[prefix][1]] = tmpRow[homeOrAwayColumns[prefix][1]] + 1
+        # New Home(away) record = (oldHomeRecord * oldNumHomeGames +- oldHomeTeamWinQ)/newNumHomeGames
+        if prefix == 'H':
+            dFTmp.loc[row, homeOrAwayColumns[prefix][2]] = (tmpRow[homeOrAwayColumns[prefix][1]] * tmpRow[homeOrAwayColumns[prefix][2]] + .5*(tmpRow["HomeTeamWinQ"]+1))/dFTmp.loc[row, homeOrAwayColumns[prefix][1]]
+        else:
+            dFTmp.loc[row, homeOrAwayColumns[prefix][2]] = (tmpRow[homeOrAwayColumns[prefix][1]] * tmpRow[homeOrAwayColumns[prefix][2]] + .5*(1-tmpRow["HomeTeamWinQ"]))/dFTmp.loc[row, homeOrAwayColumns[prefix][1]]
+    return dFTmp
 
-        
+
+def currNormalize(dFTmp, prefix, suffix):
+    ''' Normalizes current year data to the number of games played '''
+    # We only want to adjust rows where the current number of games played is > 0 to avoid divide by 0 errors
+    rows = dFTmp[prefix + "PlayedCurr"] > 0
+    # Normalize the column
+    dFTmp.loc[rows, prefix + suffix] = dFTmp.loc[rows, prefix + suffix]/dFTmp.loc[rows, prefix + "PlayedCurr"]
+    ## Set Columns where games played = 0 to NaN
+    #dFtmp.loc[dFTmp[prefix + "PlayedCurr"]==0, prefix + suffix] = np.nan
+    return dFTmp
 
 
+def createNewColumns(dFTmp):
+    ''' Loop over the rows in the dataFrame adding the new columns '''
+    # In 2011 the hurricanes crusaders game got cancelled because of the earthquake. So lets just set
+    # that game as a 0-0 draw.
+    dFTmp["HomeScore"] = dFTmp["HomeScore"].fillna(0)
+    dFTmp["AwayScore"] = dFTmp["AwayScore"].fillna(0)
+    for row in xrange(len(dFTmp)):             
+        # Calculate the game points difference
+        dFTmp.loc[row,"HomeTeamPtsDiff"] = dFTmp.loc[row,"HomeScore"]-dFTmp.loc[row,"AwayScore"]
+    
+        # Which team wins       
+        if dFTmp.loc[row,"HomeScore"] > dFTmp.loc[row,"AwayScore"]:
+            dFTmp.loc[row,"HomeTeamWinQ"] = 1
+        elif dFTmp.loc[row,"HomeScore"] < dFTmp.loc[row,"AwayScore"]:
+            dFTmp.loc[row,"HomeTeamWinQ"] = -1
+        else:
+            dFTmp.loc[row,"HomeTeamWinQ"] = 0
             
-print dFTmp.tail()
-                
+        homeTeam = dFTmp.loc[row,"HomeTeam"]
+        awayTeam = dFTmp.loc[row,"AwayTeam"]
+        
+        # The team stats for the current year
+        suffixes = ['PlayedCurr', 'WonCurr', 'LostCurr', 'PtsFCurr', 'PtsACurr']
+        for suffix in suffixes:
+            # For the home team
+            dFTmp = currStats(dFTmp, row, homeTeam, "H_"+suffix)
+            # For the away team
+            dFTmp = currStats(dFTmp, row, awayTeam, "A_"+suffix)
+            
+        # Calculating head to head number of times played and win ratio
+        dFTmp = headToHead(dFTmp, row, homeTeam, awayTeam)
+        
+        # Calculating the teams home and away record
+        dFTmp = homeAwayRecord(dFTmp, row, homeTeam, 'H')
+        dFTmp = homeAwayRecord(dFTmp, row, awayTeam, 'A')
+        
+    # Normalize current year stats to the number of games played
+    suffixes = ['WonCurr', 'LostCurr', 'PtsFCurr', 'PtsACurr']
+    for suffix in suffixes:
+        # For the home team
+        dFTmp = currNormalize(dFTmp, "H_", suffix)
+        # For the away team
+        dFTmp = currNormalize(dFTmp, "A_", suffix)
+        
+    return dFTmp
+
+
+sqlQuery = '''
+SELECT mR.Year, mR.Week, mR.HomeTeam, mR.AwayTeam, mR.HomeScore, mR.AwayScore,
+        sR.Won AS H_Won1, Sr.Lost AS H_Lost1, sR.Points AS H_Points1, sR.PtsF AS H_PtsF1, sR.PtsA AS H_PtsA1,
+        sRA.Won AS A_Won1, SrA.Lost AS A_Lost1, sRA.Points AS A_Points1, sRA.PtsF AS A_PtsF1, sRA.PtsA AS A_PtsA1,
+        sR.Won1 AS H_Won2, Sr.Lost1 AS H_Lost2, sR.Points1 AS H_Points2, sR.PtsF1 AS H_PtsF2, sR.PtsA1 AS H_PtsA2,
+        sRA.Won1 AS A_Won2, SrA.Lost1 AS A_Lost2, sRA.Points1 AS A_Points2, sRA.PtsF1 AS A_PtsF2, sRA.PtsA1 AS A_PtsA2,
+        sR.Won2 AS H_Won3, Sr.Lost2 AS H_Lost3, sR.Points2 AS H_Points3, sR.PtsF2 AS H_PtsF3, sR.PtsA2 AS H_PtsA3,
+        sRA.Won2 AS A_Won3, SrA.Lost2 AS A_Lost3, sRA.Points2 AS A_Points3, sRA.PtsF2 AS A_PtsF3, sRA.PtsA2 AS A_PtsA3
+FROM matchResults AS mR
+LEFT JOIN seasonResultsPastResults AS sR
+ON mR.HomeTeam=sR.TeamName AND mR.Year = sR.Year+1
+LEFT JOIN seasonResultsPastResults AS sRA
+ON mR.AwayTeam=sRA.TeamName AND mR.Year = sRA.Year+1
+WHERE mR.Year <= 2016
+ORDER BY Year, Week           
+'''
+#sqlQuery = '''
+#SELECT mR.Year, mR.Week, mR.HomeTeam, mR.AwayTeam, mR.HomeScore, mR.AwayScore
+#FROM matchResults AS mR
+#WHERE mR.Year <= 2016
+#ORDER BY Year, Week           
+#'''
+dFJoin = DB.readDatabase(connect, sqlQuery)
+print dFJoin.head()
+
+dFTmp = createNewColumns(dFJoin) 
+  
+team1 = 'Highlanders'
+team2 = 'Crusaders'          
+print dFTmp.loc[((dFTmp["HomeTeam"] == team1) | (dFTmp["AwayTeam"] == team1)) & ((dFTmp["HomeTeam"] == team2) | (dFTmp["AwayTeam"] == team2)),:]
+#print dFTmp.loc[((dFTmp["HomeTeam"] == team1) | (dFTmp["AwayTeam"] == team1)),:]
+print(dFTmp.loc[dFTmp["Year"] == 2011, :])
+
+'''------------ Need to save as a new SQL table -----------------'''
+
+#print dFTmp.loc[dFTmp["H_Won"].isnull(),:]                
 ## Temporary code for testing
 #sqlQuery = '''SELECT * FROM seasonResultsPastResults'''    #283 rows total
 ##sqlQuery = '''SELECT TeamName, Position, Won, Points FROM seasonResultsPastResults WHERE Year >= 2015 ORDER BY Year, Position''' 
