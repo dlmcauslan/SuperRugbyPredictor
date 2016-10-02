@@ -64,6 +64,7 @@ Modified 01/10/2016:
     * Added home and away records for all teams.
     * Normalized current year results.
     * All new data columns have now been created.
+    * Created database 'totalMatchDataCombined' which holds all of the final cleaned data.
 '''
 
 import pandas as pd
@@ -141,25 +142,6 @@ def createPastData(connect):
     DB.addToDatabase(dataFrameTmp, 'seasonResultsPastResults', connect)
 
 
-
-tf2 = 0
-#Set to True to remove the table
-if tf2:
-    DB.removeTable('seasonResultsPastResults', connect)
-#Set to True to create the table
-if tf2:
-    rowList = 'BP FLOAT, BP1 FLOAT, BP2 FLOAT, \
-    Draw FLOAT, Draw1 FLOAT, Draw2 FLOAT, Played INT, Lost FLOAT, Lost1 FLOAT, Lost2 FLOAT, \
-    Points FLOAT, Points1 FLOAT, Points2 FLOAT, PtsA FLOAT, PtsA1 FLOAT, PtsA2 FLOAT, \
-    PtsD FLOAT, PtsD1 FLOAT, PtsD2 FLOAT, \
-    PtsF FLOAT, PtsF1 FLOAT, PtsF2 FLOAT, Position INT, \
-    TeamName TEXT, Won FLOAT, Won1 FLOAT, Won2 FLOAT, Year INT'
-    DB.createTable('seasonResultsPastResults', rowList, connect)
-if tf2:
-    createPastData(connect)
-    
- 
- 
 def currStats(dFTmp, row, team, col):
     ''' Calculates the current season statistics for each team on  a round by round basis '''
     y = dFTmp.loc[row,"Year"]
@@ -212,6 +194,7 @@ def currStats(dFTmp, row, team, col):
                 
     return dFTmp
 
+
 def headToHead(dFTmp, row, homeTeam, awayTeam):
     ''' Calculates the number of times the two teams have played and their head to head ratio win ratio'''
     # tmp is all of the games the two teams have played in the past
@@ -233,7 +216,8 @@ def headToHead(dFTmp, row, homeTeam, awayTeam):
         else:
             dFTmp.loc[row,'H2HWinRat_HmeTeam'] = -newHeadToHead    
     return dFTmp
-    
+
+        
 def homeAwayRecord(dFTmp, row, team, prefix):
     ''' Calculates the teams home and away record '''
     homeOrAwayColumns = {'H': ('HomeTeam', 'H_NumHomeGames', 'H_HomeRec'), 'A': ('AwayTeam', 'A_NumAwayGames', 'A_AwayRec')}
@@ -267,8 +251,33 @@ def currNormalize(dFTmp, prefix, suffix):
     return dFTmp
 
 
-def createNewColumns(dFTmp):
+def createNewColumns():
     ''' Loop over the rows in the dataFrame adding the new columns '''
+    sqlQuery = '''
+    SELECT mR.Year, mR.Week, mR.HomeTeam, mR.AwayTeam, mR.HomeScore, mR.AwayScore,
+            sR.Won AS H_Won1, Sr.Lost AS H_Lost1, sR.Points AS H_Points1, sR.PtsF AS H_PtsF1, sR.PtsA AS H_PtsA1,
+            sRA.Won AS A_Won1, SrA.Lost AS A_Lost1, sRA.Points AS A_Points1, sRA.PtsF AS A_PtsF1, sRA.PtsA AS A_PtsA1,
+            sR.Won1 AS H_Won2, Sr.Lost1 AS H_Lost2, sR.Points1 AS H_Points2, sR.PtsF1 AS H_PtsF2, sR.PtsA1 AS H_PtsA2,
+            sRA.Won1 AS A_Won2, SrA.Lost1 AS A_Lost2, sRA.Points1 AS A_Points2, sRA.PtsF1 AS A_PtsF2, sRA.PtsA1 AS A_PtsA2,
+            sR.Won2 AS H_Won3, Sr.Lost2 AS H_Lost3, sR.Points2 AS H_Points3, sR.PtsF2 AS H_PtsF3, sR.PtsA2 AS H_PtsA3,
+            sRA.Won2 AS A_Won3, SrA.Lost2 AS A_Lost3, sRA.Points2 AS A_Points3, sRA.PtsF2 AS A_PtsF3, sRA.PtsA2 AS A_PtsA3
+    FROM matchResults AS mR
+    LEFT JOIN seasonResultsPastResults AS sR
+    ON mR.HomeTeam=sR.TeamName AND mR.Year = sR.Year+1
+    LEFT JOIN seasonResultsPastResults AS sRA
+    ON mR.AwayTeam=sRA.TeamName AND mR.Year = sRA.Year+1
+    WHERE mR.Year <= 2016
+    ORDER BY Year, Week           
+    '''
+    #sqlQuery = '''
+    #SELECT mR.Year, mR.Week, mR.HomeTeam, mR.AwayTeam, mR.HomeScore, mR.AwayScore
+    #FROM matchResults AS mR
+    #WHERE mR.Year <= 2016
+    #ORDER BY Year, Week           
+    #'''
+    dFTmp = DB.readDatabase(connect, sqlQuery)
+    print dFTmp.head()
+
     # In 2011 the hurricanes crusaders game got cancelled because of the earthquake. So lets just set
     # that game as a 0-0 draw.
     dFTmp["HomeScore"] = dFTmp["HomeScore"].fillna(0)
@@ -312,48 +321,61 @@ def createNewColumns(dFTmp):
         dFTmp = currNormalize(dFTmp, "A_", suffix)
         
     return dFTmp
+    
+    
+''' Creates a table of the past 3 seasons results  '''  
+tf = 0
+#Set to True to remove the table
+if tf:
+    DB.removeTable('seasonResultsPastResults', connect)
+#Set to True to create the table
+if tf:
+    rowList = 'BP FLOAT, BP1 FLOAT, BP2 FLOAT, \
+    Draw FLOAT, Draw1 FLOAT, Draw2 FLOAT, Played INT, Lost FLOAT, Lost1 FLOAT, Lost2 FLOAT, \
+    Points FLOAT, Points1 FLOAT, Points2 FLOAT, PtsA FLOAT, PtsA1 FLOAT, PtsA2 FLOAT, \
+    PtsD FLOAT, PtsD1 FLOAT, PtsD2 FLOAT, \
+    PtsF FLOAT, PtsF1 FLOAT, PtsF2 FLOAT, Position INT, \
+    TeamName TEXT, Won FLOAT, Won1 FLOAT, Won2 FLOAT, Year INT'
+    DB.createTable('seasonResultsPastResults', rowList, connect)
+if tf:
+    createPastData(connect)
+    
+ 
+''' Creates a table of the past 3 seasons results  '''  
+tf2 = 0
+#Set to True to remove the table
+if tf2:
+    DB.removeTable('totalMatchDataCombined', connect)
+#Set to True to create the table
+if tf2:
+    rowList = ' Year INT, Week INT, HomeTeam TEXT, AwayTeam TEXT, HomeScore INT, AwayScore INT,\
+                H_Won1 FLOAT, H_Lost1 FLOAT, H_Points1 FLOAT, H_PtsF1 FLOAT, H_PtsA1 FLOAT, \
+                A_Won1 FLOAT, A_Lost1 FLOAT, A_Points1 FLOAT, A_PtsF1 FLOAT, A_PtsA1 FLOAT, \
+                H_Won2 FLOAT, H_Lost2 FLOAT, H_Points2 FLOAT, H_PtsF2 FLOAT, H_PtsA2 FLOAT, \
+                A_Won2 FLOAT, A_Lost2 FLOAT, A_Points2 FLOAT, A_PtsF2 FLOAT, A_PtsA2 FLOAT, \
+                H_Won3 FLOAT, H_Lost3 FLOAT, H_Points3 FLOAT, H_PtsF3 FLOAT, H_PtsA3 FLOAT, \
+                A_Won3 FLOAT, A_Lost3 FLOAT, A_Points3 FLOAT, A_PtsF3 FLOAT, A_PtsA3 FLOAT, \
+                HomeTeamPtsDiff INT, HomeTeamWinQ INT, \
+                H_PlayedCurr INT, A_PlayedCurr INT, H_WonCurr FLOAT, A_WonCurr FLOAT, \
+                H_LostCurr FLOAT, A_LostCurr FLOAT, H_PtsFCurr FLOAT, A_PtsFCurr FLOAT, \
+                H_PtsACurr FLOAT,  A_PtsACurr FLOAT, H2HGamesPlayed INT, H2HWinRat_HmeTeam FLOAT,\
+                H_NumHomeGames INT, H_HomeRec FLOAT, A_NumAwayGames INT, A_AwayRec FLOAT'
+    DB.createTable('totalMatchDataCombined', rowList, connect)
+# Set to True to create the total data table
+if tf2:
+    dFTmp = createNewColumns()
+    # Add to database
+    DB.addToDatabase(dFTmp, 'totalMatchDataCombined', connect) 
 
-
-sqlQuery = '''
-SELECT mR.Year, mR.Week, mR.HomeTeam, mR.AwayTeam, mR.HomeScore, mR.AwayScore,
-        sR.Won AS H_Won1, Sr.Lost AS H_Lost1, sR.Points AS H_Points1, sR.PtsF AS H_PtsF1, sR.PtsA AS H_PtsA1,
-        sRA.Won AS A_Won1, SrA.Lost AS A_Lost1, sRA.Points AS A_Points1, sRA.PtsF AS A_PtsF1, sRA.PtsA AS A_PtsA1,
-        sR.Won1 AS H_Won2, Sr.Lost1 AS H_Lost2, sR.Points1 AS H_Points2, sR.PtsF1 AS H_PtsF2, sR.PtsA1 AS H_PtsA2,
-        sRA.Won1 AS A_Won2, SrA.Lost1 AS A_Lost2, sRA.Points1 AS A_Points2, sRA.PtsF1 AS A_PtsF2, sRA.PtsA1 AS A_PtsA2,
-        sR.Won2 AS H_Won3, Sr.Lost2 AS H_Lost3, sR.Points2 AS H_Points3, sR.PtsF2 AS H_PtsF3, sR.PtsA2 AS H_PtsA3,
-        sRA.Won2 AS A_Won3, SrA.Lost2 AS A_Lost3, sRA.Points2 AS A_Points3, sRA.PtsF2 AS A_PtsF3, sRA.PtsA2 AS A_PtsA3
-FROM matchResults AS mR
-LEFT JOIN seasonResultsPastResults AS sR
-ON mR.HomeTeam=sR.TeamName AND mR.Year = sR.Year+1
-LEFT JOIN seasonResultsPastResults AS sRA
-ON mR.AwayTeam=sRA.TeamName AND mR.Year = sRA.Year+1
-WHERE mR.Year <= 2016
-ORDER BY Year, Week           
-'''
-#sqlQuery = '''
-#SELECT mR.Year, mR.Week, mR.HomeTeam, mR.AwayTeam, mR.HomeScore, mR.AwayScore
-#FROM matchResults AS mR
-#WHERE mR.Year <= 2016
-#ORDER BY Year, Week           
-#'''
-dFJoin = DB.readDatabase(connect, sqlQuery)
-print dFJoin.head()
-
-dFTmp = createNewColumns(dFJoin) 
-  
-team1 = 'Highlanders'
-team2 = 'Crusaders'          
-print dFTmp.loc[((dFTmp["HomeTeam"] == team1) | (dFTmp["AwayTeam"] == team1)) & ((dFTmp["HomeTeam"] == team2) | (dFTmp["AwayTeam"] == team2)),:]
-#print dFTmp.loc[((dFTmp["HomeTeam"] == team1) | (dFTmp["AwayTeam"] == team1)),:]
-print(dFTmp.loc[dFTmp["Year"] == 2011, :])
-
-'''------------ Need to save as a new SQL table -----------------'''
-
-#print dFTmp.loc[dFTmp["H_Won"].isnull(),:]                
+              
 ## Temporary code for testing
+team1 = 'Highlanders'
+team2 = 'Crusaders' 
+sqlQuery = '''SELECT * FROM totalMatchDataCombined WHERE (HomeTeam = '{}' AND AwayTeam = '{}') OR (HomeTeam = '{}' AND AwayTeam = '{}')'''.format(team1, team2, team2, team1)
 #sqlQuery = '''SELECT * FROM seasonResultsPastResults'''    #283 rows total
 ##sqlQuery = '''SELECT TeamName, Position, Won, Points FROM seasonResultsPastResults WHERE Year >= 2015 ORDER BY Year, Position''' 
 ###sqlQuery = '''SELECT * FROM seasonResults WHERE TeamName LIKE '%kin%' OR TeamName LIKE '%souk%' '''
 ##sqlQuery = '''SELECT DISTINCT TeamName FROM seasonResults'''       #18 rows total                
-#dataFrame = DB.readDatabase(connect, sqlQuery)
-#print dataFrame
+dataFrame = DB.readDatabase(connect, sqlQuery)
+print dataFrame
+#dataFrame.info()
