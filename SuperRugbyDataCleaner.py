@@ -3,29 +3,11 @@ Formats super rugby data into a format that can be used for making machine learn
 Created: 24/09/2016
     Loads data from the superRugbyPredictor MySQL database (locally hosted)
     
-    Data to process, previous 3 years + current season, total won, total lost, points for, points against, table points for both teams
-     Head to head win ratio from home teams perspective, Home teams total home record against all teams, Away teams total away record against all teams
+    Data to process, previous 3 years + current season, total won, total lost, points for, points against, table points for both teams,
+    Head to head win ratio from home teams perspective, Home teams total home record against all teams, Away teams total away record against all teams
     
-     - solving for HomeTeamWinQ (does the home team win? t/f) 1 for a win, -1 for a loss, 0 for a draw or HomeTeamPtsDiff (What is home team score - away team score?)
-     - Week, Year are not included in ML model
-     
-    rowList = 'HomeTeamWinQ INT, HomeTeamPtsDiff Float, HomeTeam TEXT, HomeScore INT, AwayScore INT, AwayTeam TEXT, Week INT, Year INT, \
-                H2HWinRat_HmeTeam FLOAT, H_HomeRec FLOAT, A_AwayRec FLOAT, H_PlayedCurr INT, A_PlayedCurr INT, \
-                H2HGamesPlayed INT, H_NumHomeGames INT, A_NumHomeGames INT, \
-    H_LostCurr FLOAT, H_PointsCurr FLOAT, H_PtsACurr FLOAT, H_PtsFCurr FLOAT, H_WonCurr FLOAT, \
-    A_LostCurr FLOAT, A_PointsCurr FLOAT, A_PtsACurr FLOAT, A_PtsFCurr FLOAT, A_WonCurr FLOAT \
-    H_Lost FLOAT, H_Lost1 FLOAT, H_Lost2 FLOAT, \
-    H_Points FLOAT, H_Points1 FLOAT, H_Points2 FLOAT, 
-    H_PtsA FLOAT, H_PtsA1 FLOAT, H_PtsA2 FLOAT, \
-    H_PtsF FLOAT, H_PtsF1 FLOAT, H_PtsF2 FLOAT \
-    H_Won FLOAT, H_Won1 FLOAT, H_Won2 FLOAT, \    
-    A_Lost FLOAT, A_Lost1 FLOAT, A_Lost2 FLOAT, \
-    A_Points FLOAT, A_Points1 FLOAT, A_Points2 FLOAT, \
-    A_PtsA FLOAT, A_PtsA1 FLOAT, A_PtsA2 FLOAT, \
-    A_PtsF FLOAT, A_PtsF1 FLOAT, A_PtsF2 FLOAT \
-    A_Won FLOAT, A_Won1 FLOAT, A_Won2 FLOAT'
-    }
-    
+     - solving for HomeTeamWinQ (does the home team win? t/f) 1 for a win, -1 for a loss, 0 for a draw or HomeTeamPtsDiff (home team score - away team score)
+     - Week, Year are not included in ML model   
     
     For every game:
         HomeScore - home teams score
@@ -38,7 +20,7 @@ Created: 24/09/2016
         H_(A_)NumHome(Away)Games - Total number of home (away) games the home (away) team has played.
         H_ - Referring to the home team
         A_ - Referring to the away team
-        Curr, ' ', 1, 2 - Refers to currents season, last season, 2 seasons ago, 3 seasons ago
+        Curr, 1, 2, 3 - Refers to currents season, last season, 2 seasons ago, 3 seasons ago
         Lost - games lost
         Won - games won
         Points - championship points
@@ -65,6 +47,10 @@ Modified 01/10/2016:
     * Normalized current year results.
     * All new data columns have now been created.
     * Created database 'totalMatchDataCombined' which holds all of the final cleaned data.
+    
+Modified 02/10/2016:
+    * All past year results that were previously NaN because they referred to years before
+    the competition started have now been replaced with the mean value over all years.
 '''
 
 import pandas as pd
@@ -319,7 +305,10 @@ def createNewColumns():
         dFTmp = currNormalize(dFTmp, "H_", suffix)
         # For the away team
         dFTmp = currNormalize(dFTmp, "A_", suffix)
-        
+    
+    # For all the data we don't have information for (past years data before the competition started)
+    # replace the NaNs with the mean value
+    dFTmp = dFTmp.fillna(dFTmp.mean())    
     return dFTmp
     
     
@@ -371,7 +360,8 @@ if tf2:
 ## Temporary code for testing
 team1 = 'Highlanders'
 team2 = 'Crusaders' 
-sqlQuery = '''SELECT * FROM totalMatchDataCombined WHERE (HomeTeam = '{}' AND AwayTeam = '{}') OR (HomeTeam = '{}' AND AwayTeam = '{}')'''.format(team1, team2, team2, team1)
+#sqlQuery = '''SELECT * FROM totalMatchDataCombined WHERE (HomeTeam = '{}' AND AwayTeam = '{}') OR (HomeTeam = '{}' AND AwayTeam = '{}')'''.format(team1, team2, team2, team1)
+sqlQuery = ''' SELECT * FROM totalMatchDataCombined '''
 #sqlQuery = '''SELECT * FROM seasonResultsPastResults'''    #283 rows total
 ##sqlQuery = '''SELECT TeamName, Position, Won, Points FROM seasonResultsPastResults WHERE Year >= 2015 ORDER BY Year, Position''' 
 ###sqlQuery = '''SELECT * FROM seasonResults WHERE TeamName LIKE '%kin%' OR TeamName LIKE '%souk%' '''
