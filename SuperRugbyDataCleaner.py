@@ -6,7 +6,8 @@ Created: 24/09/2016
     Data to process, previous 3 years + current season, total won, total lost, points for, points against, table points for both teams,
     Head to head win ratio from home teams perspective, Home teams total home record against all teams, Away teams total away record against all teams
     
-     - solving for HomeTeamWinQ (does the home team win? t/f) 1 for a win, -1 for a loss, 0 for a draw or HomeTeamPtsDiff (home team score - away team score)
+     - solving for HomeTeamWinQ (does the home team win? t/f) 1 for a win, -1 for a loss, 0 for a draw or HomeTeamWinSplit (2 HT 13+, 1 HT 12-, 0 Draw, -1 AT 12-, -2 AT 13+) or
+     HomeTeamPtsDiff (home team score - away team score)
      - Week, Year are not included in ML model   
     
     For every game:
@@ -51,6 +52,9 @@ Modified 01/10/2016:
 Modified 02/10/2016:
     * All past year results that were previously NaN because they referred to years before
     the competition started have now been replaced with the mean value over all years.
+    
+Modified 17/10/2016:
+    * Added extra column HomeTeamWinSplit which shows whether the winning team won by 13+ or less than 12.
 '''
 
 import pandas as pd
@@ -275,10 +279,19 @@ def createNewColumns():
         # Which team wins       
         if dFTmp.loc[row,"HomeScore"] > dFTmp.loc[row,"AwayScore"]:
             dFTmp.loc[row,"HomeTeamWinQ"] = 1
+            if dFTmp.loc[row,"HomeTeamPtsDiff"] >= 13:
+                dFTmp.loc[row, "HomeTeamWinSplit"] = 2
+            else:
+                dFTmp.loc[row, "HomeTeamWinSplit"] = 1        
         elif dFTmp.loc[row,"HomeScore"] < dFTmp.loc[row,"AwayScore"]:
             dFTmp.loc[row,"HomeTeamWinQ"] = -1
+            if dFTmp.loc[row,"HomeTeamPtsDiff"] <= -13:
+                dFTmp.loc[row, "HomeTeamWinSplit"] = -2
+            else:
+                dFTmp.loc[row, "HomeTeamWinSplit"] = -1 
         else:
             dFTmp.loc[row,"HomeTeamWinQ"] = 0
+            dFTmp.loc[row, "HomeTeamWinSplit"] = 0
             
         homeTeam = dFTmp.loc[row,"HomeTeam"]
         awayTeam = dFTmp.loc[row,"AwayTeam"]
@@ -330,7 +343,7 @@ if tf:
     createPastData(connect)
     
  
-''' Creates a table of the past 3 seasons results  '''  
+''' Creates a table of all of the data  '''  
 tf2 = 0
 #Set to True to remove the table
 if tf2:
@@ -344,7 +357,7 @@ if tf2:
                 A_Won2 FLOAT, A_Lost2 FLOAT, A_Points2 FLOAT, A_PtsF2 FLOAT, A_PtsA2 FLOAT, \
                 H_Won3 FLOAT, H_Lost3 FLOAT, H_Points3 FLOAT, H_PtsF3 FLOAT, H_PtsA3 FLOAT, \
                 A_Won3 FLOAT, A_Lost3 FLOAT, A_Points3 FLOAT, A_PtsF3 FLOAT, A_PtsA3 FLOAT, \
-                HomeTeamPtsDiff INT, HomeTeamWinQ INT, \
+                HomeTeamPtsDiff INT, HomeTeamWinQ INT, HomeTeamWinSplit INT,\
                 H_PlayedCurr INT, A_PlayedCurr INT, H_WonCurr FLOAT, A_WonCurr FLOAT, \
                 H_LostCurr FLOAT, A_LostCurr FLOAT, H_PtsFCurr FLOAT, A_PtsFCurr FLOAT, \
                 H_PtsACurr FLOAT,  A_PtsACurr FLOAT, H2HGamesPlayed INT, H2HWinRat_HmeTeam FLOAT,\
@@ -360,8 +373,8 @@ if tf2:
 ## Temporary code for testing
 team1 = 'Highlanders'
 team2 = 'Crusaders' 
-#sqlQuery = '''SELECT * FROM totalMatchDataCombined WHERE (HomeTeam = '{}' AND AwayTeam = '{}') OR (HomeTeam = '{}' AND AwayTeam = '{}')'''.format(team1, team2, team2, team1)
-sqlQuery = ''' SELECT * FROM totalMatchDataCombined '''
+sqlQuery = '''SELECT Year, Week, HomeTeam, AwayTeam, HomeScore, AwayScore, HomeTeamPtsDiff, HomeTeamWinQ, HomeTeamWinSplit FROM totalMatchDataCombined WHERE (HomeTeam = '{}' AND AwayTeam = '{}') OR (HomeTeam = '{}' AND AwayTeam = '{}')'''.format(team1, team2, team2, team1)
+#sqlQuery = ''' SELECT * FROM totalMatchDataCombined '''
 #sqlQuery = '''SELECT * FROM seasonResultsPastResults'''    #283 rows total
 ##sqlQuery = '''SELECT TeamName, Position, Won, Points FROM seasonResultsPastResults WHERE Year >= 2015 ORDER BY Year, Position''' 
 ###sqlQuery = '''SELECT * FROM seasonResults WHERE TeamName LIKE '%kin%' OR TeamName LIKE '%souk%' '''
