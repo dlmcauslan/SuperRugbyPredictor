@@ -61,26 +61,19 @@ connect = [host, user, passwd, db]
 
 def loadDataAndNormalize(connect):
     # For the first test lets only include the current years data and last years data
-    sqlQuery = '''SELECT Year, HomeTeamWinQ, H_Won1, H_Lost1, H_Points1, H_PtsF1, H_PtsA1, \
+    sqlQuery = '''SELECT Year, HomeTeamWinQ, HomeTeamWinSplit, H_Won1, H_Lost1, H_Points1, H_PtsF1, H_PtsA1, \
                     A_Won1, A_Lost1, A_Points1, A_PtsF1, A_PtsA1, H_WonCurr, A_WonCurr, H_LostCurr, A_LostCurr, \
                     H_Won2, H_Lost2, H_Points2, H_PtsF2, H_PtsA2, A_Won2, A_Lost2, A_Points2, A_PtsF2, A_PtsA2, \
                     H_Won3, H_Lost3, H_Points3, H_PtsF3, H_PtsA3, A_Won3, A_Lost3, A_Points3, A_PtsF3, A_PtsA3, \
                     H_PtsFCurr, A_PtsFCurr, H_PtsACurr, A_PtsACurr, H2HWinRat_HmeTeam, H_HomeRec, A_AwayRec FROM totalMatchDataCombined'''    #1850 rows total
     rugbyData = DB.readDatabase(connect,sqlQuery)
-    #rugbyData.info() 
-    #rugbyData.describe()
     
-    frameColumns = ['Year','HomeTeamWinQ','H_Won1', 'H_Lost1', 'H_Points1', 'H_PtsF1', 'H_PtsA1', 'A_Won1', 'A_Lost1', 'A_Points1', \
+    frameColumns = ['Year','HomeTeamWinQ', 'HomeTeamWinSplit', 'H_Won1', 'H_Lost1', 'H_Points1', 'H_PtsF1', 'H_PtsA1', 'A_Won1', 'A_Lost1', 'A_Points1', \
                 'A_PtsF1', 'A_PtsA1', 'H_WonCurr', 'A_WonCurr', 'H_LostCurr', 'A_LostCurr', 'H_PtsFCurr', \
                 'A_PtsFCurr', 'H_PtsACurr', 'A_PtsACurr', 'H2HWinRat_HmeTeam', 'H_HomeRec', 'A_AwayRec']# , \
                 #'H_Won2', 'H_Lost2', 'H_Points2', 'H_PtsF2', 'H_PtsA2', 'A_Won2', 'A_Lost2', 'A_Points2', 'A_PtsF2', 'A_PtsA2', \
                 #'H_Won3', 'H_Lost3', 'H_Points3', 'H_PtsF3', 'H_PtsA3', 'A_Won3', 'A_Lost3', 'A_Points3', 'A_PtsF3', 'A_PtsA3']
-    #predictorsToNormalize = ['H_PtsF1', 'H_PtsA1', 'A_PtsF1', 'A_PtsA1', 'H_PtsFCurr', 'H_PtsACurr', 'A_PtsFCurr', 'A_PtsACurr']
-    #rugbyDataScaled = pd.DataFrame(dict.fromkeys(predictors,[]))
-    #rugbyData = rugbyData.append(pd.DataFrame([tempRow], columns=colNames), ignore_index=True)
-    #rugbyDataScaled = pd.DataFrame(preprocessing.scale(rugbyData[predictorsToNormalize]), columns = predictorsToNormalize)
-    
-    #pointsToNormalize = ['H_Points1','A_Points1']
+
     predictorsToNormalize = ['H_PtsF1', 'H_PtsA1', 'A_PtsF1', 'A_PtsA1', 'H_PtsFCurr', 'H_PtsACurr', 'A_PtsFCurr', 'A_PtsACurr','H_Points1','A_Points1'] #, \
                             #'H_Points2', 'H_PtsF2', 'H_PtsA2','A_Points2', 'A_PtsF2', 'A_PtsA2', \
                             #'H_Points3', 'H_PtsF3', 'H_PtsA3','A_Points3', 'A_PtsF3', 'A_PtsA3']
@@ -94,8 +87,8 @@ def loadDataAndNormalize(connect):
 
 
 def createTrainAndTest(rugbyData):
-    rugbyTrain = rugbyData.loc[rugbyData["Year"] <= 2015, :]
-    rugbyTest = rugbyData.loc[rugbyData["Year"] >= 2016, :]
+    rugbyTrain = rugbyData.loc[rugbyData["Year"] <= 2014, :]
+    rugbyTest = rugbyData.loc[rugbyData["Year"] >= 2015, :]
     
     return rugbyTrain, rugbyTest
 
@@ -104,7 +97,7 @@ rugbyTrain, rugbyTest = createTrainAndTest(rugbyData)
 
 def buildModelAndPredict(algorithm, rugbyTrain, rugbyTest):
     # The columns we'll use to predict the target
-    predictors = [columnName for columnName in frameColumns if columnName not in ["Year", "HomeTeamWinQ"]]
+    predictors = [columnName for columnName in frameColumns if columnName not in ["Year", "HomeTeamWinQ", "HomeTeamWinSplit"]]
     # The predictors we're using the train the algorithm.  Note how we only take the rows in the train folds.
     trainPredictors = rugbyTrain[predictors]
     # The target we're using to train the algorithm.
@@ -118,8 +111,26 @@ def buildModelAndPredict(algorithm, rugbyTrain, rugbyTest):
     # Model accuracy
     accuracyTest = accuracy_score(testTarget, testPredictions)
     accuracyTrain = accuracy_score(trainTarget, trainPredictions)
-    return accuracyTest, accuracyTrain
+    return accuracyTest, accuracyTrain, testPredictions
 
+def buildModelAndPredict2(algorithm, rugbyTrain, rugbyTest):
+    ''' Same as buildModelAndPredict, but aims to predict the winning margin, whether its 12- or 13+'''
+    # The columns we'll use to predict the target
+    predictors = [columnName for columnName in frameColumns if columnName not in ["Year", "HomeTeamWinQ", "HomeTeamWinSplit"]]
+    # The predictors we're using the train the algorithm.  Note how we only take the rows in the train folds.
+    trainPredictors = rugbyTrain[predictors]
+    # The target we're using to train the algorithm.
+    trainTarget = np.array(rugbyTrain["HomeTeamWinSplit"])
+    testTarget = np.array(rugbyTest["HomeTeamWinSplit"])
+    # Training the algorithm using the predictors and target.
+    algorithm.fit(trainPredictors, trainTarget)
+    # We can now make predictions on the test and train data
+    trainPredictions = algorithm.predict(rugbyTrain[predictors])
+    testPredictions = algorithm.predict(rugbyTest[predictors])
+    # Model accuracy
+    accuracyTest = accuracy_score(testTarget, testPredictions)
+    accuracyTrain = accuracy_score(trainTarget, trainPredictions)
+    return accuracyTest, accuracyTrain, testPredictions
 
 ## Baseline test, if homeTeam wins every game.
 trainTarget = np.array(rugbyTrain["HomeTeamWinQ"])
@@ -128,24 +139,38 @@ accuracyTest = sum(testTarget == 1)/float(len(testTarget))
 accuracyTrain = sum(trainTarget == 1)/float(len(testTarget))
 print(accuracyTest, accuracyTrain, "Baseline")
 
-accuracyTest, accuracyTrain = buildModelAndPredict(sklm.LogisticRegression(max_iter = 100, C = 0.82), rugbyTrain, rugbyTest)
+accuracyTest, accuracyTrain, logPredictions = buildModelAndPredict(sklm.LogisticRegression(max_iter = 100, C = 0.82), rugbyTrain, rugbyTest)
 print(accuracyTest, accuracyTrain, "Logistic Regression")
 
-accuracyTest, accuracyTrain = buildModelAndPredict(svm.SVC(kernel = 'linear', C = 100), rugbyTrain, rugbyTest)
-print(accuracyTest, accuracyTrain, "Linear SVC")
+#accuracyTest, accuracyTrain = buildModelAndPredict(svm.SVC(kernel = 'linear', C = 100), rugbyTrain, rugbyTest)
+#print(accuracyTest, accuracyTrain, "Linear SVC")
 
-accuracyTest, accuracyTrain = buildModelAndPredict(DecisionTreeClassifier(max_features = len(frameColumns)-2, max_depth = 6, min_samples_split=25, random_state=0), rugbyTrain, rugbyTest)
-print(accuracyTest, accuracyTrain, "DecisionTree")
+#accuracyTest, accuracyTrain = buildModelAndPredict(DecisionTreeClassifier(max_features = len(frameColumns)-2, max_depth = 6, min_samples_split=25, random_state=0), rugbyTrain, rugbyTest)
+#print(accuracyTest, accuracyTrain, "DecisionTree")
+#
+#accuracyTest, accuracyTrain = buildModelAndPredict(RandomForestClassifier(n_estimators = 500, max_features = len(frameColumns)-2, max_depth = 6, min_samples_split=16, random_state=0, n_jobs=4), rugbyTrain, rugbyTest)
+#print(accuracyTest, accuracyTrain, "RandomForest")
 
-accuracyTest, accuracyTrain = buildModelAndPredict(RandomForestClassifier(n_estimators = 500, max_features = len(frameColumns)-2, max_depth = 6, min_samples_split=16, random_state=0, n_jobs=4), rugbyTrain, rugbyTest)
-print(accuracyTest, accuracyTrain, "RandomForest")
-
-accuracyTest, accuracyTrain = buildModelAndPredict(ExtraTreesClassifier(n_estimators = 500, max_features = len(frameColumns)-2, max_depth = 6, min_samples_split=16, random_state=0, n_jobs=4), rugbyTrain, rugbyTest)
+accuracyTest, accuracyTrain, forestPredictions = buildModelAndPredict(ExtraTreesClassifier(n_estimators = 500, max_features = len(frameColumns)-3, max_depth = 6, min_samples_split=16, random_state=0, n_jobs=4), rugbyTrain, rugbyTest)
 print(accuracyTest, accuracyTrain, "ExtraRandomForest")
 
-accuracyTest, accuracyTrain = buildModelAndPredict(KNeighborsClassifier(n_neighbors=30, algorithm='auto', leaf_size=30), rugbyTrain, rugbyTest)
+accuracyTest, accuracyTrain, neighboursPredictions = buildModelAndPredict(KNeighborsClassifier(n_neighbors=30, algorithm='auto', leaf_size=30), rugbyTrain, rugbyTest)
 print(accuracyTest, accuracyTrain, "NearestNeighbours")
 
+agreePred = []
+agreeTest = []
+for n in range(len(forestPredictions)):
+    if forestPredictions[n]==logPredictions[n]:
+        agreePred.append(forestPredictions[n])
+        agreeTest.append(testTarget[n])
+
+print(accuracy_score(agreeTest, agreePred))
+
+accuracyTest, accuracyTrain, logPredictions = buildModelAndPredict2(sklm.LogisticRegression(max_iter = 100, C = 0.82), rugbyTrain, rugbyTest)
+print(accuracyTest, accuracyTrain, "Logistic Regression")
+
+accuracyTest, accuracyTrain, forestPredictions = buildModelAndPredict2(ExtraTreesClassifier(n_estimators = 500, max_features = len(frameColumns)-3, max_depth = 6, min_samples_split=16, random_state=0, n_jobs=4), rugbyTrain, rugbyTest)
+print(accuracyTest, accuracyTrain, "ExtraRandomForest")
 
 def optimizeRandomForest(rugbyTrain, rugbyTest):
     ''' Perform a gridsearch to optimize the logistic regression model '''
@@ -183,11 +208,3 @@ def optimizeLogisticRegression(rugbyTrain, rugbyTest):
     fig1.show()
 
 #optimizeLogisticRegression(rugbyTrain, rugbyTest)
-
-
-
-## Test code
-#sqlQuery = '''SELECT * FROM totalMatchDataCombined'''    #1850 rows total
-##sqlQuery = '''SELECT DISTINCT TeamName FROM seasonResults'''       #18 rows total
-#rugbyDat = DB.readDatabase(connect,sqlQuery)
-#rugbyDat.info() 
